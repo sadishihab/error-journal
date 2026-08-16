@@ -94,6 +94,22 @@ def scrub(text: str) -> str:
 # Ordered most-specific first; first match wins.
 # --------------------------------------------------------------------------
 
+POD_SUFFIX_RE = re.compile(r"-(?:[a-f0-9]{8,10}-)?[a-z0-9]{5}$")
+
+
+def workload_of(pod_name: str) -> str:
+    """payments-api-5d8f9c7b6d-x2k9p -> payments-api"""
+    return POD_SUFFIX_RE.sub("", pod_name)
+
+
+def repo_of(image: str) -> str:
+    """myregistry.io/api:v1.2.3 -> myregistry.io/api  (also strips @sha256:…)"""
+    base = image.split("@", 1)[0]
+    head, sep, tail = base.rpartition(":")
+    # A colon in the registry host means a port, not a tag.
+    return head if sep and "/" not in tail else base
+
+
 def _detect_k8s(raw: str) -> Optional[tuple[str, str, dict]]:
     patterns = [
         (r"\bCrashLoopBackOff\b", "k8s.crashloop"),
@@ -110,14 +126,33 @@ def _detect_k8s(raw: str) -> Optional[tuple[str, str, dict]]:
         m = re.search(pat, raw, re.I)
         if not m:
             continue
+
         identity = {}
+        scope = None
+
         img = re.search(r'image\s+"?([\w./\-:@]+)"?', raw, re.I)
         if img:
             identity["image"] = img.group(1)
+            identity["repo"] = repo_of(img.group(1))
+
         pod = re.search(r"\bpod[/ ]([a-z0-9][\w.\-]*)", raw, re.I)
         if pod:
             identity["pod"] = pod.group(1)
-        return cat, m.group(0), identity
+            identity["workload"] = workload_of(pod.group(1))
+
+        container = re.search(r'container\s+"?([\w.\-]+)"?', raw, re.I)
+        if container:
+            identity["container"] = container.group(1)
+
+        # Scope the hash to WHAT broke, not just HOW. Image-pull failures are
+        # about the image; everything else is about the workload.
+        if cat == "k8s.image_pull":
+            scope = identity.get("repo")
+        else:
+            scope = identity.get("workload") or identity.get("container")
+
+        signal = f"{m.group(0)} [{scope}]" if scope else m.group(0)
+        return cat, signal, identity
     return None
 
 

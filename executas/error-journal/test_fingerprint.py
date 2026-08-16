@@ -16,12 +16,12 @@ ModuleNotFoundError: No module named 'requests\'''',
 ModuleNotFoundError: No module named 'requests\'''',
     ),
     (
-        "k8s CrashLoopBackOff, different pods and timestamps",
+        "k8s CrashLoopBackOff, same workload, different pod replicas",
         "2026-08-16T10:22:31Z  Warning  BackOff  pod/payments-api-5d8f9c7b6d-x2k9p  Back-off restarting failed container, CrashLoopBackOff",
-        "2026-08-14T03:11:02Z  Warning  BackOff  pod/orders-api-7c4a1b2e9f-qq81z  Back-off restarting failed container, CrashLoopBackOff",
+        "2026-08-14T03:11:02Z  Warning  BackOff  pod/payments-api-7c4a1b2e9f-qq81z  Back-off restarting failed container, CrashLoopBackOff",
     ),
     (
-        "k8s ImagePullBackOff, different image tags",
+        "k8s ImagePullBackOff, same repo, different tags",
         'Failed to pull image "myregistry.io/api:v1.2.3": ImagePullBackOff',
         'Failed to pull image "myregistry.io/api:v1.2.4": ImagePullBackOff',
     ),
@@ -63,6 +63,16 @@ DIFFERENT = [
         "npm codes differ",
         "npm ERR! code ELIFECYCLE",
         "npm ERR! code ENOENT",
+    ),
+    (
+        "crashloop on DIFFERENT workloads must not merge",
+        "Warning BackOff pod/payments-api-5d8f9c7b6d-x2k9p Back-off restarting failed container, CrashLoopBackOff",
+        "Warning BackOff pod/orders-api-7c4a1b2e9f-qq81z Back-off restarting failed container, CrashLoopBackOff",
+    ),
+    (
+        "image pull on DIFFERENT repos must not merge",
+        'Failed to pull image "myregistry.io/api:v1.2.3": ImagePullBackOff',
+        'Failed to pull image "docker.io/library/redis:7": ImagePullBackOff',
     ),
 ]
 
