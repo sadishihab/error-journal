@@ -1,0 +1,7 @@
+error_journal_plugin.py
+pyproject.toml
+tool_dev_error_journal.egg-info/PKG-INFO
+tool_dev_error_journal.egg-info/SOURCES.txt
+tool_dev_error_journal.egg-info/dependency_links.txt
+tool_dev_error_journal.egg-info/entry_points.txt
+tool_dev_error_journal.egg-info/top_level.txt

@@ -1,0 +1,2 @@
+[console_scripts]
+tool-dev-error-journal = error_journal_plugin:main
