@@ -1,6 +1,12 @@
 import { AnnaAppRuntime } from "/static/anna-apps/_sdk/latest/index.js";
 
-const TOOL_ID = "tool-dev-error-journal";
+// Resolved from the handle map that anna-tool-ids.js defines. The platform
+// rewrites that file at publish time, so nothing here needs to change when
+// the real tool_id is minted.
+const HANDLE = "error-journal";
+const TOOL_ID =
+  (window.__ANNA_TOOL_IDS__ && window.__ANNA_TOOL_IDS__[HANDLE]) ||
+  "tool-dev-error-journal";
 
 const $ = (id) => document.getElementById(id);
 const els = {
