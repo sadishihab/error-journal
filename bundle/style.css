@@ -362,6 +362,19 @@ html, body {
   border-top: 1px solid var(--rule);
 }
 
+.chip.src-curated  { border-color: var(--verified); color: var(--verified); }
+.chip.src-generated { border-color: var(--amber); color: var(--amber); }
+
+/* Generated answers get a visibly different band from verified ones — the
+   user should never have to guess which tier they are reading. */
+.generated-note {
+  padding: 12px 14px;
+  font-size: 12px;
+  color: var(--ink-mid);
+  background: #FCFAF4;
+  border-left: 3px solid var(--amber);
+}
+
 .unknown-note {
   padding: 12px 14px;
   font-size: 12px;

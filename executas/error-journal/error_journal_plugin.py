@@ -11,6 +11,7 @@ awaiting a reverse response are queued, not dropped.
 import itertools
 import json
 import os
+import re
 import select
 import signal
 import sys
@@ -33,13 +34,19 @@ MAX_RECENT = 50
 # whole invoke waiting for a reply that may never come.
 STORAGE_TIMEOUT_S = 5.0
 
+# Sampling is a model round-trip, so it needs a far longer budget than a KV
+# read. Still bounded: a hung completion must not hold the invoke forever.
+SAMPLING_TIMEOUT_S = 60.0
+SAMPLING_MAX_TOKENS = 700
+MAX_LOG_CHARS = 4000        # keep prompts small; the tail carries the error
+
 MANIFEST = {
     "name": "tool-dev-error-journal",
     "version": "0.3.0",
     "description": "Diagnose technical errors and keep a persistent incident journal.",
     # APS grant. NOTE: the local harness reads host_capabilities from
     # manifest.json (top level), not from here — keep both in sync.
-    "host_capabilities": ["aps.kv"],
+    "host_capabilities": ["aps.kv", "llm.sample"],
     "tools": [
         {
             "name": "ping",
@@ -145,7 +152,7 @@ def _next_message(timeout=None):
         return {}
 
 
-def reverse_rpc(method: str, params: dict, invoke_id=None):
+def reverse_rpc(method: str, params: dict, invoke_id=None, timeout=None):
     """Issue a reverse RPC to the host and block for its response.
 
     Forward requests arriving meanwhile are queued for the main loop rather
@@ -157,7 +164,7 @@ def reverse_rpc(method: str, params: dict, invoke_id=None):
 
     _write({"jsonrpc": "2.0", "id": rpc_id, "method": method, "params": params})
 
-    deadline = time.monotonic() + STORAGE_TIMEOUT_S
+    deadline = time.monotonic() + (timeout or STORAGE_TIMEOUT_S)
     while True:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
@@ -264,22 +271,167 @@ def journal(fp_obj, context: str, invoke_id=None) -> dict:
     }
 
 
+
+# ---------------------------------------------------------------------------
+# Tier 2: generated diagnosis
+#
+# The curated KB is authoritative but finite. When a fingerprint falls outside
+# it we ask the host model once, cache the answer in APS under the fingerprint,
+# and serve the cache on every later occurrence. So the same error still yields
+# the same answer — determinism is preserved past the first encounter.
+#
+# Every generated result is labelled `source: "generated"` so the UI can say
+# plainly that it is not verified.
+# ---------------------------------------------------------------------------
+
+class SamplingUnavailable(Exception):
+    """Model access not granted, quota spent, or the host refused."""
+
+
+DIAGNOSIS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "root_cause": {"type": "string"},
+        "fix_steps": {"type": "array", "items": {"type": "string"}},
+        "verify_command": {"type": "string"},
+        "severity": {"type": "string", "enum": ["low", "medium", "high"]},
+        "confidence": {"type": "number"},
+    },
+    "required": ["root_cause", "fix_steps", "verify_command", "severity", "confidence"],
+    "additionalProperties": False,
+}
+
+SAMPLING_SYSTEM = (
+    "You diagnose technical errors for working engineers who are mid-incident. "
+    "Be concrete and specific to the error given. Prefer the command people "
+    "actually forget over the obvious one. Never invent a fix you are not "
+    "reasonably confident in \u2014 lower the confidence score instead. "
+    "Reply with a JSON object matching the requested schema."
+)
+
+
+def sample_diagnosis(fp_obj, raw_log: str, invoke_id=None) -> dict:
+    """Ask the host model for a diagnosis. Raises SamplingUnavailable."""
+    tail = raw_log.strip()[-MAX_LOG_CHARS:]
+    prompt = (
+        f"Error category: {fp_obj.category}\n"
+        f"Normalised signature: {fp_obj.template}\n"
+        f"Details: {json.dumps(fp_obj.identity)}\n\n"
+        f"Raw error:\n{tail}\n\n"
+        "Reply with a JSON object containing: root_cause (1-2 sentences), "
+        "fix_steps (2-5 concrete, runnable steps in order), verify_command "
+        "(a shell command that confirms the fix, or an empty string if none "
+        "applies), severity (low|medium|high), and confidence (0.0-1.0 for how "
+        "sure you are this diagnosis is correct)."
+    )
+
+    try:
+        res = reverse_rpc(
+            "sampling/createMessage",
+            {
+                "messages": [
+                    {"role": "user", "content": {"type": "text", "text": prompt}}
+                ],
+                "maxTokens": SAMPLING_MAX_TOKENS,
+                "systemPrompt": SAMPLING_SYSTEM,
+                "temperature": 0.2,
+                "includeContext": "none",
+                "responseFormat": {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "error_diagnosis",
+                        "strict": True,
+                        "schema": DIAGNOSIS_SCHEMA,
+                    },
+                },
+                # Degrade rather than fail if the model lacks strict schemas.
+                "onUnsupported": "json_object",
+                "metadata": {"executa_invoke_id": invoke_id},
+            },
+            invoke_id,
+            timeout=SAMPLING_TIMEOUT_S,
+        )
+    except StorageUnavailable as e:
+        raise SamplingUnavailable(str(e)) from e
+
+    text = ((res.get("content") or {}).get("text") or "").strip()
+    if not text:
+        raise SamplingUnavailable("empty completion")
+
+    # structuredValid is informational only — always parse defensively.
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text)
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as e:
+        raise SamplingUnavailable(f"unparseable completion: {e}") from e
+
+    steps = [str(x) for x in (data.get("fix_steps") or []) if str(x).strip()][:5]
+    if not data.get("root_cause") or not steps:
+        raise SamplingUnavailable("completion missing root_cause or fix_steps")
+
+    sev = data.get("severity")
+    try:
+        conf = float(data.get("confidence", 0.5))
+    except (TypeError, ValueError):
+        conf = 0.5
+
+    return {
+        "severity": sev if sev in ("low", "medium", "high") else "medium",
+        "root_cause": str(data["root_cause"]),
+        "fix_steps": steps,
+        "verify_command": (str(data.get("verify_command") or "").strip() or None),
+        # Cap generated confidence below the curated floor: a model's own
+        # certainty is not evidence, and the user should see the difference.
+        "confidence": max(0.0, min(conf, 0.65)),
+    }
+
+
+def cached_diagnosis(fp: str, invoke_id=None):
+    try:
+        return aps_get(f"generated/{fp}", invoke_id)
+    except StorageUnavailable:
+        return None
+
+
+def cache_diagnosis(fp: str, payload: dict, invoke_id=None) -> None:
+    try:
+        aps_set(f"generated/{fp}", payload, invoke_id)
+    except StorageUnavailable:
+        pass    # best effort; a cache miss next time is not a failure
+
+
 def diagnose(log: str, context: str = "", invoke_id=None) -> dict:
     fp = fingerprint(log)
-    kb = KB.get(fp.category, UNKNOWN)
+    curated = KB.get(fp.category)
+
+    if curated:
+        body, source = curated, "curated"
+    else:
+        cached = cached_diagnosis(fp.fingerprint, invoke_id)
+        if cached:
+            body, source = cached, "generated"
+        else:
+            try:
+                body = sample_diagnosis(fp, log, invoke_id)
+                source = "generated"
+                cache_diagnosis(fp.fingerprint, body, invoke_id)
+            except SamplingUnavailable:
+                body, source = UNKNOWN, "none"
 
     out = {
         "fingerprint": fp.fingerprint,
         "category": fp.category,
         "template": fp.template,
         "identity": fp.identity,
-        "severity": kb["severity"],
-        "root_cause": kb["root_cause"],
+        "severity": body["severity"],
+        "root_cause": body["root_cause"],
         "evidence": [fp.template],
-        "fix_steps": list(kb["fix_steps"]),
-        "verify_command": kb["verify_command"],
-        "confidence": kb["confidence"],
-        "recognized": fp.matched and fp.category in KB,
+        "fix_steps": list(body["fix_steps"]),
+        "verify_command": body["verify_command"],
+        "confidence": body["confidence"],
+        "source": source,                       # curated | generated | none
+        "recognized": source != "none",
         "history": None,
         "journal_available": True,
     }
@@ -287,7 +439,6 @@ def diagnose(log: str, context: str = "", invoke_id=None) -> dict:
     try:
         out["history"] = journal(fp, context, invoke_id)
     except StorageUnavailable as e:
-        # The user may not have granted storage. The diagnosis still stands.
         out["journal_available"] = False
         out["journal_error"] = str(e)
 
@@ -360,7 +511,7 @@ def handle_forward(req: dict) -> None:
                 "server_info": {"name": MANIFEST["name"], "version": MANIFEST["version"]},
                 # Half of the handshake; the other half is host_capabilities
                 # in the describe manifest above.
-                "capabilities": {"storage": {}},
+                "capabilities": {"storage": {}, "sampling": {}},
             }
         elif method == "describe":
             result = MANIFEST

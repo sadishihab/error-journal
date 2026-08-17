@@ -28,9 +28,11 @@ ModuleNotFoundError: No module named 'requests'"""
 
 
 class MockAgent:
-    def __init__(self, storage_granted=True):
+    def __init__(self, storage_granted=True, sampling_granted=True):
         self.storage = {}
         self.granted = storage_granted
+        self.sampling_granted = sampling_granted
+        self.sampling_calls = 0
         self.proc = subprocess.Popen(
             [sys.executable, PLUGIN],
             stdin=subprocess.PIPE,
@@ -47,6 +49,29 @@ class MockAgent:
         """Answer a reverse RPC the way Nexus would."""
         rpc_id, method = msg.get("id"), msg.get("method")
         params = msg.get("params") or {}
+
+        if method == "sampling/createMessage":
+            self.sampling_calls += 1
+            if not self.sampling_granted:
+                self._send({"jsonrpc": "2.0", "id": rpc_id,
+                            "error": {"code": -32001, "message": "SAMPLING_NOT_GRANTED"}})
+                return
+            fake = json.dumps({
+                "root_cause": "The dependency lock file is out of sync with package.json.",
+                "fix_steps": ["rm -rf node_modules package-lock.json", "npm install"],
+                "verify_command": "npm ls --depth=0",
+                "severity": "medium",
+                "confidence": 0.7,
+            })
+            self._send({"jsonrpc": "2.0", "id": rpc_id, "result": {
+                "role": "assistant",
+                "content": {"type": "text", "text": fake},
+                "model": "mock-model",
+                "stopReason": "endTurn",
+                "usage": {"totalTokens": 210},
+                "_meta": {"responseFormat": {"applied": "json_schema", "structuredValid": True}},
+            }})
+            return
 
         if not self.granted:
             self._send({
@@ -165,6 +190,49 @@ def run_ungranted():
     print("\ndegraded cleanly — no crash\n")
 
 
+def run_sampling():
+    print("=" * 72)
+    print("TIER 2 — uncovered error falls back to the model, then caches")
+    print("=" * 72)
+    a = MockAgent(storage_granted=True, sampling_granted=True)
+    a.request({"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {}})
+
+    UNCOVERED = "FooFrameworkError: widget registry desynchronised at boot"
+
+    d1 = a.invoke(1, "diagnose_error", {"log": UNCOVERED})["result"]["data"]
+    print(f"1st  -> source={d1['source']} conf={d1['confidence']} "
+          f"steps={len(d1['fix_steps'])} sampling_calls={a.sampling_calls}")
+
+    d2 = a.invoke(2, "diagnose_error", {"log": UNCOVERED})["result"]["data"]
+    print(f"2nd  -> source={d2['source']} sampling_calls={a.sampling_calls} "
+          f"(want still 1 — served from cache)")
+    print(f"   identical answer: {d1['root_cause'] == d2['root_cause']}")
+
+    d3 = a.invoke(3, "diagnose_error", {"log": "ModuleNotFoundError: No module named 'x'"})["result"]["data"]
+    print(f"curated -> source={d3['source']} conf={d3['confidence']} "
+          f"sampling_calls={a.sampling_calls} (want still 1 — KB hit, no model)")
+    a.close()
+    print()
+
+
+def run_no_sampling():
+    print("=" * 72)
+    print("TIER 3 — no model access: stay honest, do not invent")
+    print("=" * 72)
+    a = MockAgent(storage_granted=True, sampling_granted=False)
+    a.request({"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {}})
+    d = a.invoke(1, "diagnose_error", {"log": "FooFrameworkError: totally unknown thing"})["result"]["data"]
+    print(f"source      = {d['source']}")
+    print(f"recognized  = {d['recognized']}")
+    print(f"fix_steps   = {len(d['fix_steps'])} (want 0)")
+    print(f"confidence  = {d['confidence']} (want 0.0)")
+    print(f"journalled  = {d['journal_available']}")
+    a.close()
+    print()
+
+
 if __name__ == "__main__":
     run_granted()
+    run_sampling()
+    run_no_sampling()
     run_ungranted()

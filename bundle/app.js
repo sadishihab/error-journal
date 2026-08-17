@@ -79,6 +79,11 @@ function renderResult(d) {
   if (typeof d.confidence === "number" && d.confidence > 0) {
     parts.push(`<span class="chip">confidence ${Math.round(d.confidence * 100)}%</span>`);
   }
+  if (d.source === "curated") {
+    parts.push('<span class="chip src-curated">verified</span>');
+  } else if (d.source === "generated") {
+    parts.push('<span class="chip src-generated">generated</span>');
+  }
   for (const [k, v] of Object.entries(d.identity || {})) {
     if (["workload", "repo", "module", "image", "container"].includes(k)) {
       parts.push(`<span class="chip">${esc(k)}: ${esc(v)}</span>`);
@@ -130,11 +135,17 @@ function renderResult(d) {
     );
   }
 
-  if (!d.recognized) {
+  if (d.source === "generated") {
     parts.push(
-      '<div class="unknown-note">This one is not in the playbook yet, so there is no ' +
-      "verified fix to give you. It has still been logged \u2014 if you hit it again, " +
-      "the logbook will connect the two.</div>"
+      '<div class="generated-note">This one is not in the playbook, so the diagnosis ' +
+      "above was generated rather than verified. Treat it as a starting point and " +
+      "check it before running anything destructive.</div>"
+    );
+  } else if (d.source === "none") {
+    parts.push(
+      '<div class="unknown-note">No verified fix, and no diagnosis could be generated ' +
+      "\u2014 model access may not be enabled for this app. The error has still been " +
+      "logged, so if you hit it again the logbook will connect the two.</div>"
     );
   }
 
