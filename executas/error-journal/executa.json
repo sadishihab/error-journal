@@ -1,5 +1,7 @@
 {
   "name": "error-journal",
+  "tool_id": "tool-dev-error-journal",
+  "type": "python",
   "version": "0.3.0",
   "description": "Deterministic error fingerprinting, diagnosis, and a persistent per-user incident journal.",
   "distribution": {
@@ -15,11 +17,6 @@
         "binary_artifacts": {
           "darwin-arm64": {
             "path": "dist/error-journal-{version}-darwin-arm64.tar.gz",
-            "entrypoint": "error-journal",
-            "format": "tar.gz"
-          },
-          "darwin-x86_64": {
-            "path": "dist/error-journal-{version}-darwin-x86_64.tar.gz",
             "entrypoint": "error-journal",
             "format": "tar.gz"
           },

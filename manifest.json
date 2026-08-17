@@ -47,7 +47,7 @@
     ],
     "host_api": {
       "tools": [
-        "required:bundled:error-journal"
+        "required:*"
       ],
       "storage": [
         "get",
