@@ -1,0 +1,40 @@
+{
+  "name": "error-journal",
+  "version": "0.3.0",
+  "description": "Deterministic error fingerprinting, diagnosis, and a persistent per-user incident journal.",
+  "distribution": {
+    "active": "binary",
+    "profiles": {
+      "local": {
+        "type": "local",
+        "supports_protocol": true
+      },
+      "binary": {
+        "type": "binary",
+        "supports_protocol": true,
+        "binary_artifacts": {
+          "darwin-arm64": {
+            "path": "dist/error-journal-{version}-darwin-arm64.tar.gz",
+            "entrypoint": "error-journal",
+            "format": "tar.gz"
+          },
+          "darwin-x86_64": {
+            "path": "dist/error-journal-{version}-darwin-x86_64.tar.gz",
+            "entrypoint": "error-journal",
+            "format": "tar.gz"
+          },
+          "linux-x86_64": {
+            "path": "dist/error-journal-{version}-linux-x86_64.tar.gz",
+            "entrypoint": "error-journal",
+            "format": "tar.gz"
+          },
+          "windows-x86_64": {
+            "path": "dist/error-journal-{version}-windows-x86_64.zip",
+            "entrypoint": "error-journal.exe",
+            "format": "zip"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,160 @@
+name: Build Executa Binaries
+
+# Manual trigger only — builds are cut deliberately, not on every push.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Executa version (must match executa.json)"
+        required: true
+        default: "0.3.0"
+
+env:
+  EXECUTA_NAME: error-journal
+  PLUGIN_ENTRY: executas/error-journal/error_journal_plugin.py
+  WORKDIR: executas/error-journal
+
+jobs:
+  build:
+    name: ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false      # one platform failing must not hide the others
+      matrix:
+        include:
+          # ubuntu-22.04 rather than 24.04: an older glibc builds binaries
+          # that also run on newer systems, not the other way round. This is
+          # the Cloud Agent target, so maximum compatibility matters most.
+          - platform: linux-x86_64
+            runner: ubuntu-22.04
+            archive: tar.gz
+            exe: error-journal
+          - platform: darwin-arm64
+            runner: macos-14          # Apple Silicon
+            archive: tar.gz
+            exe: error-journal
+          - platform: darwin-x86_64
+            runner: macos-13          # last Intel runner
+            archive: tar.gz
+            exe: error-journal
+          - platform: windows-x86_64
+            runner: windows-latest
+            archive: zip
+            exe: error-journal.exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyInstaller
+        run: python -m pip install --upgrade pip pyinstaller
+
+      - name: Build binary
+        shell: bash
+        working-directory: ${{ env.WORKDIR }}
+        run: |
+          pyinstaller --onefile \
+            --name "${EXECUTA_NAME}" \
+            --hidden-import fingerprint \
+            --hidden-import knowledge \
+            error_journal_plugin.py
+          ls -la dist/
+
+      - name: Smoke-test the binary
+        shell: bash
+        working-directory: ${{ env.WORKDIR }}
+        run: |
+          # A binary that cannot answer `describe` is not worth shipping.
+          echo '{"jsonrpc":"2.0","method":"describe","id":1}' \
+            | ./dist/${{ matrix.exe }} > out.json
+          cat out.json
+          grep -q '"diagnose_error"' out.json
+          grep -q '"aps.kv"' out.json
+          echo "smoke test passed"
+
+      - name: Stage archive contents
+        shell: bash
+        working-directory: ${{ env.WORKDIR }}
+        run: |
+          STAGE="stage/${EXECUTA_NAME}"
+          mkdir -p "$STAGE"
+          cp "dist/${{ matrix.exe }}" "$STAGE/"
+          # Ship a manifest at the archive root: it pins the install identity
+          # and stops the Agent guessing the entrypoint.
+          cat > "$STAGE/manifest.json" <<EOF
+          {
+            "name": "${EXECUTA_NAME}",
+            "version": "${{ inputs.version }}",
+            "executable_name": "${EXECUTA_NAME}",
+            "runtime": {
+              "type": "binary",
+              "entrypoint": "${{ matrix.exe }}"
+            }
+          }
+          EOF
+          ls -la "$STAGE"
+
+      - name: Create archive (tar.gz)
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        working-directory: ${{ env.WORKDIR }}
+        run: |
+          ASSET="${EXECUTA_NAME}-${{ inputs.version }}-${{ matrix.platform }}.tar.gz"
+          # -C into the staging dir so the archive has no leading folder.
+          tar -czf "$ASSET" -C "stage/${EXECUTA_NAME}" .
+          shasum -a 256 "$ASSET" > "$ASSET.sha256" 2>/dev/null \
+            || sha256sum "$ASSET" > "$ASSET.sha256"
+          ls -lh "$ASSET"*
+
+      - name: Create archive (zip)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        working-directory: ${{ env.WORKDIR }}
+        run: |
+          $asset = "$env:EXECUTA_NAME-${{ inputs.version }}-${{ matrix.platform }}.zip"
+          Compress-Archive -Path "stage/$env:EXECUTA_NAME/*" -DestinationPath $asset
+          (Get-FileHash $asset -Algorithm SHA256).Hash.ToLower() + "  $asset" `
+            | Out-File -Encoding ascii "$asset.sha256"
+          Get-ChildItem $asset*
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}
+          path: |
+            ${{ env.WORKDIR }}/${{ env.EXECUTA_NAME }}-${{ inputs.version }}-${{ matrix.platform }}.*
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Verify all four platforms are present
+        run: |
+          ls -R artifacts
+          # linux-x86_64 is the Cloud Agent target — its absence is fatal,
+          # and a green overall run does not prove it was produced.
+          for p in linux-x86_64 darwin-arm64 darwin-x86_64 windows-x86_64; do
+            if ! ls artifacts/$p/* >/dev/null 2>&1; then
+              echo "::error::missing artifact for $p"
+              exit 1
+            fi
+          done
+          echo "all four platforms present"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: executa-v${{ inputs.version }}
+          name: Executa v${{ inputs.version }}
+          files: artifacts/**/*
+          generate_release_notes: true
