@@ -19,7 +19,7 @@ jobs:
     name: ${{ matrix.platform }}
     runs-on: ${{ matrix.runner }}
     strategy:
-      fail-fast: false      # one platform failing must not hide the others
+      fail-fast: false # one platform failing must not hide the others
       matrix:
         include:
           # ubuntu-22.04 rather than 24.04: an older glibc builds binaries
@@ -29,12 +29,13 @@ jobs:
             runner: ubuntu-22.04
             archive: tar.gz
             exe: error-journal
+
+          # Intel Macs (macos-13) omitted: the runner is being retired and
+          # queued >80 min without being picked up. Apple stopped selling
+          # Intel Macs in 2023. To restore, add a darwin-x86_64 entry here
+          # AND a matching block in executa.json binary_artifacts.
           - platform: darwin-arm64
-            runner: macos-14          # Apple Silicon
-            archive: tar.gz
-            exe: error-journal
-          - platform: darwin-x86_64
-            runner: macos-13          # last Intel runner
+            runner: macos-14 # Apple Silicon
             archive: tar.gz
             exe: error-journal
           - platform: windows-x86_64
@@ -144,7 +145,7 @@ jobs:
           ls -R artifacts
           # linux-x86_64 is the Cloud Agent target — its absence is fatal,
           # and a green overall run does not prove it was produced.
-          for p in linux-x86_64 darwin-arm64 darwin-x86_64 windows-x86_64; do
+          for p in linux-x86_64 darwin-arm64 windows-x86_64; do
             if ! ls artifacts/$p/* >/dev/null 2>&1; then
               echo "::error::missing artifact for $p"
               exit 1
