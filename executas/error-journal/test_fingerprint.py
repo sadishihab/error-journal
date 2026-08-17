@@ -26,9 +26,9 @@ ModuleNotFoundError: No module named 'requests\'''',
         'Failed to pull image "myregistry.io/api:v1.2.4": ImagePullBackOff',
     ),
     (
-        "docker port conflict, different ports",
-        "docker: Error response from daemon: driver failed programming external connectivity: Bind for 0.0.0.0:8080 failed: port is already allocated.",
+        "docker port conflict, SAME port, different wording",
         "docker: Error response from daemon: driver failed programming external connectivity: Bind for 0.0.0.0:5432 failed: port is already allocated.",
+        "Error response from daemon: Ports are not available: Bind for 0.0.0.0:5432 failed: port is already allocated",
     ),
     (
         "OOMKilled, different memory numbers",
@@ -73,6 +73,21 @@ DIFFERENT = [
         "image pull on DIFFERENT repos must not merge",
         'Failed to pull image "myregistry.io/api:v1.2.3": ImagePullBackOff',
         'Failed to pull image "docker.io/library/redis:7": ImagePullBackOff',
+    ),
+    (
+        "port conflicts on DIFFERENT ports are different incidents",
+        "Bind for 0.0.0.0:8080 failed: port is already allocated",
+        "Bind for 0.0.0.0:5432 failed: port is already allocated",
+    ),
+    (
+        "JS TypeError vs Python TypeError must not merge",
+        "TypeError: Cannot read properties of undefined\n    at h (/srv/api/routes.js:31:14)",
+        'Traceback (most recent call last):\n  File "a.py", line 3\nTypeError: unsupported operand type(s)',
+    ),
+    (
+        "Java NPE is not a Python exception",
+        'java.lang.NullPointerException: bad\n\tat com.example.App.main(App.java:12)',
+        "Traceback (most recent call last):\nAttributeError: 'NoneType' object has no attribute 'id'",
     ),
 ]
 

@@ -321,6 +321,71 @@ KB = {
         "verify_command": "getent hosts <host>",
         "confidence": 0.8,
     },
+    # ------------------------------------------------------- go/java/rust ---
+    "go.nil_pointer": {
+        "severity": "high",
+        "root_cause": "A nil pointer was dereferenced. The panic trace names the exact line.",
+        "fix_steps": [
+            "Read the first goroutine frame — that is your code, not the runtime",
+            "A function returned (nil, err) and the err was not checked",
+            "Guard the pointer before use, or fix the caller that ignored the error",
+        ],
+        "verify_command": "go run -race .",
+        "confidence": 0.85,
+    },
+    "go.index_out_of_range": {
+        "severity": "medium",
+        "root_cause": "A slice or array was indexed beyond its length.",
+        "fix_steps": [
+            "The panic prints both index and length — compare them",
+            "Check loop bounds and any len() assumption made before a slice op",
+            "Slicing an empty result set is the usual cause",
+        ],
+        "verify_command": None,
+        "confidence": 0.85,
+    },
+    "go.panic": {
+        "severity": "high",
+        "root_cause": "The program panicked and unwound the stack.",
+        "fix_steps": [
+            "The first goroutine frame is the origin",
+            "Recover only at a boundary you control; do not swallow panics broadly",
+        ],
+        "verify_command": None,
+        "confidence": 0.6,
+    },
+    "java.null_pointer_exception": {
+        "severity": "medium",
+        "root_cause": "A method or field was accessed on a null reference.",
+        "fix_steps": [
+            "Java 14+ prints the exact expression that was null — read the message closely",
+            "Trace back to where the value should have been assigned",
+            "Prefer Optional or an explicit null check at the boundary",
+        ],
+        "verify_command": None,
+        "confidence": 0.8,
+    },
+    "rust.unwrap_none": {
+        "severity": "medium",
+        "root_cause": "unwrap() was called on an Option that was None.",
+        "fix_steps": [
+            "Replace unwrap() with a match, if let, or unwrap_or_else",
+            "Use expect(\"why this should exist\") so the next panic explains itself",
+            "RUST_BACKTRACE=1 gives the full frame list",
+        ],
+        "verify_command": "RUST_BACKTRACE=1 cargo run",
+        "confidence": 0.85,
+    },
+    "rust.index_out_of_bounds": {
+        "severity": "medium",
+        "root_cause": "A slice or Vec was indexed past its length.",
+        "fix_steps": [
+            "The panic prints the index and the length",
+            "Prefer .get(i) which returns Option instead of panicking",
+        ],
+        "verify_command": None,
+        "confidence": 0.85,
+    },
     "shell.command_not_found": {
         "severity": "low",
         "root_cause": "The binary is not installed, or not on PATH for this shell.",

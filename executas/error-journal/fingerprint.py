@@ -23,7 +23,24 @@ from dataclasses import dataclass, field, asdict
 from typing import Optional
 
 
-FINGERPRINT_VERSION = 1
+FINGERPRINT_VERSION = 2
+
+
+# ANSI/VT100 escapes. Must be stripped before anything else: CI logs and
+# terminal pastes are full of them, and they corrupt every downstream regex.
+ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b[@-Z\\-_]|\r")
+
+# Log-line prefixes that wrap the real error: syslog/journald stamps,
+# pytest's "E   " gutter, docker-compose service tags, CI step markers.
+LOG_PREFIX_RE = re.compile(
+    r"^(?:"
+    r"[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\s+\S+\s+\S+?(?:\[\d+\])?:\s*"  # syslog
+    r"|E\s{2,}"                                                                   # pytest
+    r"|\S+\s+\|\s*"                                                               # compose
+    r"|\[\S+\]\s+"                                                                # bracket tag
+    r")",
+    re.M,
+)
 
 
 # --------------------------------------------------------------------------
@@ -151,25 +168,24 @@ def _detect_k8s(raw: str) -> Optional[tuple[str, str, dict]]:
         else:
             scope = identity.get("workload") or identity.get("container")
 
-        signal = f"{m.group(0)} [{scope}]" if scope else m.group(0)
-        return cat, signal, identity
+        return cat, m.group(0), identity, scope
     return None
 
 
-def _detect_python(raw: str) -> Optional[tuple[str, str, dict]]:
-    if "Traceback (most recent call last)" not in raw and not re.search(
-        r"^\w*(?:Error|Exception)\b", raw.strip(), re.M
-    ):
-        return None
-
-    # The last exception line carries the identity.
+def _detect_python(raw: str) -> Optional[tuple]:
+    has_tb = "Traceback (most recent call last)" in raw
+    # Allow a leading log prefix — journald stamps, pytest gutters, compose
+    # tags. Anchoring to line start alone misses most real-world pastes.
     exc_lines = re.findall(
-        r"^([A-Za-z_][\w.]*(?:Error|Exception|Interrupt|Exit))\s*:?\s*(.*)$",
+        r"(?:^|[\s|])([A-Za-z_][\w.]*(?:Error|Exception|Interrupt|Exit))\s*:\s*(.*)$",
         raw,
         re.M,
     )
+    if not exc_lines and not has_tb:
+        return None
     if not exc_lines:
         return None
+
     exc_type, exc_msg = exc_lines[-1]
 
     identity = {"exception": exc_type}
@@ -188,7 +204,7 @@ def _detect_python(raw: str) -> Optional[tuple[str, str, dict]]:
         if attr:
             identity["attribute"] = attr.group(1)
 
-    return cat, f"{exc_type}: {exc_msg}", identity
+    return cat, f"{exc_type}: {exc_msg}", identity, None
 
 
 def _detect_docker(raw: str) -> Optional[tuple[str, str, dict]]:
@@ -208,20 +224,33 @@ def _detect_docker(raw: str) -> Optional[tuple[str, str, dict]]:
             port = re.search(r"0\.0\.0\.0:(\d+)", raw)
             if port:
                 identity["port"] = port.group(1)
-            return cat, m.group(0), identity
+            return cat, m.group(0), identity, identity.get("port")
     return None
 
 
-def _detect_node(raw: str) -> Optional[tuple[str, str, dict]]:
+def _detect_node(raw: str) -> Optional[tuple]:
     m = re.search(r"npm ERR! code (\w+)", raw)
     if m:
-        return "node.npm_" + m.group(1).lower(), m.group(0), {"npm_code": m.group(1)}
+        return "node.npm_" + m.group(1).lower(), m.group(0), {"npm_code": m.group(1)}, None
+
     m = re.search(r"Cannot find module ['\"]([^'\"]+)['\"]", raw)
     if m:
-        return "node.module_not_found", m.group(0), {"module": m.group(1)}
-    m = re.search(r"^(\w*Error): (.*)$", raw.strip(), re.M)
-    if m and "node" in raw.lower():
-        return "node." + _snake(m.group(1)), m.group(0), {"exception": m.group(1)}
+        return "node.module_not_found", m.group(0), {"module": m.group(1)}, None
+
+    # JS stack frames look like "at fn (/path/file.js:14:9)" or "at file.js:1:1".
+    # Python uses 'File "x", line N' instead, so this cleanly separates the two
+    # languages even though both have TypeError / RangeError / SyntaxError.
+    js_frame = re.search(r"\n\s+at\s+.*?:\d+:\d+\)?", raw)
+    js_hint = js_frame or "node:internal" in raw or "node_modules" in raw
+    if js_hint:
+        m = re.search(r"^\s*(?:Uncaught\s+)?(\w*Error):\s*(.*)$", raw, re.M)
+        if m:
+            return (
+                "node." + _snake(m.group(1)),
+                f"{m.group(1)}: {m.group(2)}",
+                {"language": "javascript", "exception": m.group(1)},
+                None,
+            )
     return None
 
 
@@ -237,18 +266,76 @@ def _detect_shell(raw: str) -> Optional[tuple[str, str, dict]]:
     for pat, cat in patterns:
         m = re.search(pat, raw)
         if m:
-            return cat, m.group(0), {}
+            return cat, m.group(0), {}, None
     m = re.search(r"exit (?:status|code) (\d+)", raw, re.I)
     if m:
-        return f"shell.exit_{m.group(1)}", m.group(0), {"exit_code": m.group(1)}
+        return f"shell.exit_{m.group(1)}", m.group(0), {"exit_code": m.group(1)}, None
     return None
+
+
+def _detect_go(raw: str) -> Optional[tuple]:
+    m = re.search(r"^panic:\s*(.+)$", raw, re.M)
+    if not m:
+        return None
+    msg = m.group(1).strip()
+    identity = {"language": "go"}
+    sig = re.search(r"\[signal (SIG\w+)", raw)
+    if sig:
+        identity["signal"] = sig.group(1)
+    if "nil pointer dereference" in raw:
+        return "go.nil_pointer", "panic: nil pointer dereference", identity, None
+    if "index out of range" in msg:
+        return "go.index_out_of_range", "panic: index out of range", identity, None
+    return "go.panic", f"panic: {msg}", identity, None
+
+
+def _detect_java(raw: str) -> Optional[tuple]:
+    # Require a real JVM marker. "  at " alone also appears in Node stacks.
+    if ".java:" not in raw and "\tat " not in raw:
+        return None
+    m = re.search(
+        r"((?:[a-z][\w.]*\.)?[A-Z]\w*(?:Exception|Error))(?::\s*(.*))?", raw
+    )
+    if not m:
+        return None
+    fq = m.group(1)
+    short = fq.split(".")[-1]
+    return (
+        "java." + _snake(short),
+        f"{short}: {(m.group(2) or '').strip()}",
+        {"language": "java", "exception": fq},
+        None,
+    )
+
+
+def _detect_rust(raw: str) -> Optional[tuple]:
+    m = re.search(r"thread '([^']+)' panicked at ([^\n]*)", raw)
+    if not m:
+        return None
+    detail = ""
+    lines = raw.splitlines()
+    for i, ln in enumerate(lines):
+        if "panicked at" in ln and i + 1 < len(lines):
+            detail = lines[i + 1].strip()
+            break
+    identity = {"language": "rust", "thread": m.group(1)}
+    if "Option::unwrap()" in raw:
+        return "rust.unwrap_none", "called Option::unwrap() on a None value", identity, None
+    if "index out of bounds" in detail:
+        return "rust.index_out_of_bounds", "index out of bounds", identity, None
+    return "rust.panic", detail or "panic", identity, None
 
 
 DETECTORS = [
     _detect_k8s,
+    # Language detectors with distinctive markers run before the Python one:
+    # java.lang.NullPointerException also ends in "Exception".
+    _detect_go,
+    _detect_java,
+    _detect_rust,
+    _detect_node,
     _detect_python,
     _detect_docker,
-    _detect_node,
     _detect_shell,
 ]
 
@@ -279,26 +366,35 @@ def fingerprint(raw: str) -> Fingerprint:
     Reduce a raw error log to a stable Fingerprint.
 
     Same class of error -> same `fingerprint`, regardless of timestamps,
-    pod suffixes, paths, or memory addresses.
+    pod suffixes, paths, colour codes, or memory addresses.
     """
     if not raw or not raw.strip():
         raise ValueError("empty log")
 
-    category, signal, identity, matched = "unknown", raw, {}, False
+    # Strip terminal escapes before any matching. Skipping this makes every
+    # CI-pasted error unrecognisable.
+    clean = ANSI_RE.sub("", raw)
+
+    category, signal, identity, scope, matched = "unknown", clean, {}, None, False
 
     for detector in DETECTORS:
-        hit = detector(raw)
+        hit = detector(clean)
         if hit:
-            category, signal, identity = hit
+            category, signal, identity, scope = hit
             matched = True
             break
 
     if not matched:
-        # Fall back to the densest non-empty line; better than nothing.
-        lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
-        signal = max(lines, key=len) if lines else raw
+        lines = [ln.strip() for ln in clean.splitlines() if ln.strip()]
+        signal = max(lines, key=len) if lines else clean
 
+    # Scrub the signal, THEN append the scope. Scrubbing a scope destroys it:
+    # "registry:5000/team/api" becomes "<N><PATH>", which collides with every
+    # other repo on that registry.
     template = scrub(signal)[:400]
+    if scope:
+        template = f"{template} [{scope}]"
+
     digest = hashlib.sha256(
         f"v{FINGERPRINT_VERSION}|{category}|{template}".encode()
     ).hexdigest()
