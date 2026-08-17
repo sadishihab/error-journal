@@ -1,8 +1,9 @@
 {
   "name": "error-journal",
   "tool_id": "tool-dev-error-journal",
+  "slug": "error-journal",
   "type": "python",
-  "version": "0.3.0",
+  "version": "0.3.2",
   "description": "Deterministic error fingerprinting, diagnosis, and a persistent per-user incident journal.",
   "distribution": {
     "active": "binary",

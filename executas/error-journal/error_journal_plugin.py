@@ -41,70 +41,112 @@ SAMPLING_MAX_TOKENS = 700
 MAX_LOG_CHARS = 4000        # keep prompts small; the tail carries the error
 
 MANIFEST = {
-    "name": "tool-dev-error-journal",
-    "version": "0.3.0",
-    "description": "Diagnose technical errors and keep a persistent incident journal.",
-    # APS grant. NOTE: the local harness reads host_capabilities from
-    # manifest.json (top level), not from here — keep both in sync.
+    "name": "error-journal",
+    "version": "0.3.2",
+    "description": (
+        "Diagnose a pasted error, traceback, or failing log. Returns a stable "
+        "fingerprint, root cause, ordered fix steps, and whether the user has "
+        "hit this exact problem before."
+    ),
+    # APS grant. NOTE: the harness reads host_capabilities from the top level
+    # of manifest.json, not from here — keep both in sync.
     "host_capabilities": ["aps.kv", "llm.sample"],
     "tools": [
         {
             "name": "ping",
-            "description": "Smoke-test method.",
-            "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+            "description": "Smoke-test method. Returns pong.",
+            # Protocol-native shape: `parameters` is a LIST of parameter
+            # definitions, not a JSON Schema object. A JSON Schema object here
+            # makes the platform see zero declared parameters, and the model
+            # then refuses to invoke the tool.
+            "parameters": [],
         },
         {
             "name": "diagnose_error",
             "description": (
-                "Diagnose a pasted error, traceback, or log. Returns a stable "
-                "fingerprint, root cause, fix steps, and whether the user has "
-                "hit this exact problem before."
+                "Diagnose a pasted error, traceback, stack trace, or failing log "
+                "output. Use this whenever the user pastes raw error text. Returns "
+                "a deterministic fingerprint, the root cause, ordered fix steps, a "
+                "verification command, and whether this exact problem has been "
+                "seen before in the user's journal."
             ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "log": {"type": "string", "description": "Raw error text or log output."},
-                    "context": {
-                        "type": "string",
-                        "description": "Optional: where it happened (service, repo, cluster).",
-                    },
+            "parameters": [
+                {
+                    "name": "log",
+                    "type": "string",
+                    "description": (
+                        "The raw error text exactly as the user pasted it. Do not "
+                        "summarise, truncate, or reformat — the fingerprint is "
+                        "computed from this text."
+                    ),
+                    "required": True,
                 },
-                "required": ["log"],
-                "additionalProperties": False,
-            },
+                {
+                    "name": "context",
+                    "type": "string",
+                    "description": (
+                        "Optional short label for where it happened, e.g. a "
+                        "service, cluster, or repo name."
+                    ),
+                    "required": False,
+                },
+            ],
+            "timeout": 90,
         },
         {
             "name": "recall_incident",
             "description": "Look up a previously journalled incident by its fingerprint.",
-            "parameters": {
-                "type": "object",
-                "properties": {"fingerprint": {"type": "string"}},
-                "required": ["fingerprint"],
-                "additionalProperties": False,
-            },
+            "parameters": [
+                {
+                    "name": "fingerprint",
+                    "type": "string",
+                    "description": "The sha256: fingerprint returned by diagnose_error.",
+                    "required": True,
+                },
+            ],
         },
         {
             "name": "list_incidents",
-            "description": "List the user's recent journalled incidents.",
-            "parameters": {
-                "type": "object",
-                "properties": {"limit": {"type": "integer"}},
-                "additionalProperties": False,
-            },
+            "description": (
+                "List the user's recent journalled incidents, most recent first. "
+                "Use this when the user asks what errors they have hit before."
+            ),
+            "parameters": [
+                {
+                    "name": "limit",
+                    "type": "integer",
+                    "description": "Maximum number of incidents to return.",
+                    "required": False,
+                    "default": 20,
+                },
+            ],
         },
         {
             "name": "record_resolution",
-            "description": "Record whether a suggested fix actually worked.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "fingerprint": {"type": "string"},
-                    "fix": {"type": "string"},
-                    "worked": {"type": "boolean"},
+            "description": (
+                "Record whether a suggested fix actually worked, so it can be "
+                "surfaced the next time the same error occurs."
+            ),
+            "parameters": [
+                {
+                    "name": "fingerprint",
+                    "type": "string",
+                    "description": "The fingerprint of the incident being resolved.",
+                    "required": True,
                 },
-                "required": ["fingerprint", "worked"],
-                "additionalProperties": False,
-            },
+                {
+                    "name": "worked",
+                    "type": "boolean",
+                    "description": "True if the fix resolved the problem.",
+                    "required": True,
+                },
+                {
+                    "name": "fix",
+                    "type": "string",
+                    "description": "Short description of the fix that was applied.",
+                    "required": False,
+                },
+            ],
         },
     ],
 }
