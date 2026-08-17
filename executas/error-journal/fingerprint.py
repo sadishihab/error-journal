@@ -30,6 +30,11 @@ FINGERPRINT_VERSION = 3
 # terminal pastes are full of them, and they corrupt every downstream regex.
 ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b[@-Z\\-_]|\r")
 
+# Same sequences with the ESC byte already stripped — extremely common in
+# pasted logs, since copy/paste and web forms routinely drop \x1b but keep
+# the visible "[31m" remainder.
+ORPHAN_ANSI_RE = re.compile(r"\[\d{1,3}(?:;\d{1,3})*m")
+
 # Log-line prefixes that wrap the real error: syslog/journald stamps,
 # pytest's "E   " gutter, docker-compose service tags, CI step markers.
 LOG_PREFIX_RE = re.compile(
@@ -302,7 +307,11 @@ def _detect_shell(raw: str) -> Optional[tuple[str, str, dict]]:
         m = re.search(pat, raw)
         if m:
             return cat, m.group(0), {}, None
-    m = re.search(r"exit (?:status|code) (\d+)", raw, re.I)
+    # Accept every phrasing in the wild: "exit status 1", "exit code 137",
+    # "exited with code 137", "Exit Code:    1" (kubectl describe).
+    m = re.search(
+        r"exit(?:ed)?[\s:]*(?:with[\s:]*)?(?:status|code)[\s:]*(\d+)", raw, re.I
+    )
     if m:
         return f"shell.exit_{m.group(1)}", m.group(0), {"exit_code": m.group(1)}, None
     return None
@@ -495,7 +504,7 @@ def fingerprint(raw: str) -> Fingerprint:
 
     # Strip terminal escapes before any matching. Skipping this makes every
     # CI-pasted error unrecognisable.
-    clean = ANSI_RE.sub("", raw)
+    clean = ORPHAN_ANSI_RE.sub("", ANSI_RE.sub("", raw))
 
     category, signal, identity, scope, matched = "unknown", clean, {}, None, False
 
