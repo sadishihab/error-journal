@@ -11,8 +11,10 @@ awaiting a reverse response are queued, not dropped.
 import itertools
 import json
 import os
+import select
 import signal
 import sys
+import time
 from collections import deque
 from datetime import datetime, timezone
 
@@ -25,6 +27,11 @@ from knowledge import KB, UNKNOWN  # noqa: E402
 PROTOCOL_VERSION = "2.0"
 STORAGE_SCOPE = "app"          # app scope + aps.kv is the well-supported path
 MAX_RECENT = 50
+
+# Storage is a bonus; the diagnosis is the product. If the host does not
+# answer a reverse RPC within this window we degrade rather than hang the
+# whole invoke waiting for a reply that may never come.
+STORAGE_TIMEOUT_S = 5.0
 
 MANIFEST = {
     "name": "tool-dev-error-journal",
@@ -104,6 +111,9 @@ _forward_queue: deque = deque()
 _rpc_ids = itertools.count(1)
 
 
+TIMEOUT = object()   # sentinel distinct from None (EOF) and {} (malformed)
+
+
 class StorageUnavailable(Exception):
     """APS not negotiated or not granted. Degrade gracefully, never fail hard."""
 
@@ -113,8 +123,16 @@ def _write(payload: dict) -> None:
     sys.stdout.flush()
 
 
-def _next_message():
-    """Next parsed stdin message. None on EOF, {} on blank/malformed."""
+def _next_message(timeout=None):
+    """Next parsed stdin message.
+
+    Returns None on EOF, {} on blank/malformed input, and the sentinel
+    TIMEOUT when `timeout` elapses with nothing readable.
+    """
+    if timeout is not None:
+        ready, _, _ = select.select([sys.stdin], [], [], timeout)
+        if not ready:
+            return TIMEOUT
     line = sys.stdin.readline()
     if not line:
         return None
@@ -139,8 +157,14 @@ def reverse_rpc(method: str, params: dict, invoke_id=None):
 
     _write({"jsonrpc": "2.0", "id": rpc_id, "method": method, "params": params})
 
+    deadline = time.monotonic() + STORAGE_TIMEOUT_S
     while True:
-        msg = _next_message()
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise StorageUnavailable(f"timeout awaiting {method}")
+        msg = _next_message(timeout=remaining)
+        if msg is TIMEOUT:
+            raise StorageUnavailable(f"timeout awaiting {method}")
         if msg is None:
             raise StorageUnavailable("stdin closed while awaiting host response")
         if not msg:
