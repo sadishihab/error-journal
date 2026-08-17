@@ -23,7 +23,7 @@ from dataclasses import dataclass, field, asdict
 from typing import Optional
 
 
-FINGERPRINT_VERSION = 2
+FINGERPRINT_VERSION = 3
 
 
 # ANSI/VT100 escapes. Must be stripped before anything else: CI logs and
@@ -455,7 +455,15 @@ DETECTORS = [
 
 
 def _snake(name: str) -> str:
-    return re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
+    """CamelCase -> snake_case, keeping acronyms intact.
+
+    A naive split-before-every-capital turns JSONDecodeError into
+    j_s_o_n_decode_error and OSError into o_s_error. Two passes fix it:
+    first break acronym->Word boundaries, then lower->Upper boundaries.
+    """
+    name = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", name)
+    name = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name)
+    return name.lower()
 
 
 # --------------------------------------------------------------------------

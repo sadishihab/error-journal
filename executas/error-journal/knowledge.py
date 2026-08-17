@@ -528,6 +528,222 @@ KB = {
         "verify_command": None,
         "confidence": 0.8,
     },
+    # --------------------------------------- high-frequency: javascript ---
+    "node.type_error": {
+        "severity": "medium",
+        "root_cause": (
+            "A property or method was accessed on undefined or null. The value "
+            "is almost never wrong at the point it blew up — it was wrong earlier."
+        ),
+        "fix_steps": [
+            "The message names the property: 'reading X' means the object holding X was undefined",
+            "Trace back to what should have produced that object \u2014 a failed fetch, a missing key, an unawaited promise",
+            "An unawaited async call returns a Promise, not the value \u2014 check for a missing await",
+            "Use optional chaining (obj?.prop) only where absence is genuinely valid",
+        ],
+        "verify_command": None,
+        "confidence": 0.8,
+    },
+    "node.reference_error": {
+        "severity": "medium",
+        "root_cause": "A variable was used before it was defined or imported.",
+        "fix_steps": [
+            "'X is not defined' \u2014 check for a typo or a missing import",
+            "In ESM, `require` and `__dirname` do not exist; in CJS, top-level `import` does not",
+            "Browser globals (window, document) are absent in Node and vice versa",
+        ],
+        "verify_command": None,
+        "confidence": 0.85,
+    },
+    "node.syntax_error": {
+        "severity": "medium",
+        "root_cause": "The file could not be parsed.",
+        "fix_steps": [
+            "'Unexpected token' usually points at the line AFTER the real mistake",
+            "'Cannot use import statement outside a module' -> set \"type\": \"module\" in package.json, or rename to .mjs",
+            "Unexpected token in JSON means the response was HTML \u2014 usually an error page, not JSON",
+        ],
+        "verify_command": "node --check <file>",
+        "confidence": 0.85,
+    },
+    "node.unhandled_rejection": {
+        "severity": "high",
+        "root_cause": "A promise rejected with no catch handler. Node exits on this by default.",
+        "fix_steps": [
+            "Add .catch() or wrap the await in try/catch at the boundary",
+            "Any async function called without await swallows its own errors \u2014 find it",
+            "Register process.on('unhandledRejection') to log rather than exit silently",
+        ],
+        "verify_command": None,
+        "confidence": 0.8,
+    },
+    # ------------------------------------------- high-frequency: python ---
+    "python.type_error": {
+        "severity": "medium",
+        "root_cause": "An operation received an object of the wrong type.",
+        "fix_steps": [
+            "'NoneType' in the message means a function returned None where a value was expected",
+            "Read the message closely \u2014 it names both types involved",
+            "'takes N positional arguments but M were given' on a method usually means a missing self",
+            "Print type(x) at the failure point rather than guessing",
+        ],
+        "verify_command": None,
+        "confidence": 0.8,
+    },
+    "python.value_error": {
+        "severity": "medium",
+        "root_cause": "The type was right but the value was not acceptable.",
+        "fix_steps": [
+            "int('') and int('12a') raise this \u2014 validate before converting",
+            "'not enough values to unpack' means the right-hand side had a different length than expected",
+            "For external input, validate at the boundary rather than deep in the call stack",
+        ],
+        "verify_command": None,
+        "confidence": 0.8,
+    },
+    "python.index_error": {
+        "severity": "low",
+        "root_cause": "A sequence was indexed beyond its length.",
+        "fix_steps": [
+            "Check len() before indexing, especially on a filtered or query result",
+            "An empty list from a query that returned nothing is the usual cause",
+            "Slicing (lst[:1]) does not raise; indexing (lst[0]) does",
+        ],
+        "verify_command": None,
+        "confidence": 0.85,
+    },
+    "python.connection_error": {
+        "severity": "medium",
+        "root_cause": "An outbound HTTP or socket connection failed.",
+        "fix_steps": [
+            "Confirm the host resolves and the port is open: nc -vz <host> <port>",
+            "Inside a container, localhost is the container \u2014 use the service name or host.docker.internal",
+            "Set explicit timeouts; requests has none by default and will hang",
+        ],
+        "verify_command": "curl -v <url>",
+        "confidence": 0.8,
+    },
+    "python.permission_error": {
+        "severity": "medium",
+        "root_cause": "The process lacks permission on the target path.",
+        "fix_steps": [
+            "ls -la <path> and id \u2014 compare owner/mode against your user",
+            "In containers, the app often runs as a non-root UID that does not own the mounted volume",
+            "Prefer fixing ownership over chmod 777",
+        ],
+        "verify_command": "ls -la <path>",
+        "confidence": 0.85,
+    },
+    "python.json_decode_error": {
+        "severity": "low",
+        "root_cause": "The text being parsed was not valid JSON.",
+        "fix_steps": [
+            "Print the first 200 characters of the raw body \u2014 it is usually an HTML error page",
+            "'Expecting value: line 1 column 1' means the body was empty or not JSON at all",
+            "Check response.status_code before parsing",
+        ],
+        "verify_command": None,
+        "confidence": 0.85,
+    },
+    "python.runtime_error": {
+        "severity": "medium",
+        "root_cause": "A generic runtime failure. The message carries the real detail.",
+        "fix_steps": [
+            "Read the message itself \u2014 RuntimeError is a catch-all, so the text is the diagnosis",
+            "In async code, 'no running event loop' means a coroutine was called outside asyncio.run",
+            "In PyTorch, CUDA-related RuntimeErrors usually mean a device or shape mismatch",
+        ],
+        "verify_command": None,
+        "confidence": 0.5,
+    },
+    "python.zero_division_error": {
+        "severity": "low",
+        "root_cause": "A division or modulo used zero as the divisor.",
+        "fix_steps": [
+            "Guard the denominator \u2014 an empty collection giving len() == 0 is the usual cause",
+            "For averages and rates, return 0 or None explicitly when there is no data",
+        ],
+        "verify_command": None,
+        "confidence": 0.9,
+    },
+    # ---------------------------------------------- high-frequency: k8s ---
+    "k8s.image_pull_secret": {
+        "severity": "high",
+        "root_cause": "The pod has no valid credentials for a private registry.",
+        "fix_steps": [
+            "kubectl get secret <name> -n <ns>   \u2014 does it exist in the POD's namespace?",
+            "Secrets are namespaced; one in default will not work in production",
+            "imagePullSecrets must be on the pod spec (or the ServiceAccount), not the deployment metadata",
+        ],
+        "verify_command": "kubectl get sa default -n <ns> -o yaml",
+        "confidence": 0.85,
+    },
+    # -------------------------------------------- high-frequency: shell ---
+    "shell.exit_137": {
+        "severity": "high",
+        "root_cause": "The process was killed by SIGKILL \u2014 almost always the OOM killer.",
+        "fix_steps": [
+            "137 = 128 + 9 (SIGKILL). In containers this means the memory limit was hit",
+            "dmesg | grep -i 'killed process'   \u2014 confirms an OOM kill",
+            "Raise the memory limit, or reduce peak usage",
+        ],
+        "verify_command": "dmesg | tail -20",
+        "confidence": 0.85,
+    },
+    "shell.exit_1": {
+        "severity": "low",
+        "root_cause": "A generic non-zero exit. The real error is earlier in the output.",
+        "fix_steps": [
+            "Exit 1 is the wrapper, not the cause \u2014 scroll up for the actual message",
+            "Run the failing command directly to see clean output",
+        ],
+        "verify_command": None,
+        "confidence": 0.4,
+    },
+    "python.json_decode_error": {
+        "severity": "low",
+        "root_cause": "The text being parsed was not valid JSON.",
+        "fix_steps": [
+            "Print the first 200 characters of the raw body \u2014 it is usually an HTML error page",
+            "'Expecting value: line 1 column 1' means the body was empty or not JSON at all",
+            "Check response.status_code before parsing",
+        ],
+        "verify_command": None,
+        "confidence": 0.85,
+    },
+    "python.os_error": {
+        "severity": "medium",
+        "root_cause": "A system call failed. The errno in the message is the real detail.",
+        "fix_steps": [
+            "Errno 28 = disk full; 24 = too many open files; 98 = address already in use",
+            "'Too many open files' means unclosed handles \u2014 use context managers, or raise ulimit -n",
+            "'Address already in use' means the port is held; find it with ss -ltnp",
+        ],
+        "verify_command": None,
+        "confidence": 0.7,
+    },
+    "python.http_error": {
+        "severity": "medium",
+        "root_cause": "The server returned a 4xx or 5xx status.",
+        "fix_steps": [
+            "4xx is your request (auth, path, payload); 5xx is theirs \u2014 retry with backoff",
+            "401/403 -> credentials or scope; 404 -> path or resource id; 429 -> rate limited",
+            "Log response.text, not just the status \u2014 the body usually explains why",
+        ],
+        "verify_command": "curl -i <url>",
+        "confidence": 0.75,
+    },
+    "python.ssl_error": {
+        "severity": "medium",
+        "root_cause": "TLS verification or negotiation failed.",
+        "fix_steps": [
+            "'certificate verify failed' -> missing CA bundle, or a self-signed cert",
+            "In slim containers, install ca-certificates \u2014 it is often absent",
+            "Do not disable verification to make it pass; fix the trust chain",
+        ],
+        "verify_command": "openssl s_client -connect <host>:443",
+        "confidence": 0.8,
+    },
     "shell.command_not_found": {
         "severity": "low",
         "root_cause": "The binary is not installed, or not on PATH for this shell.",
