@@ -23,16 +23,16 @@ from knowledge import KB, UNKNOWN  # noqa: E402
 
 
 PROTOCOL_VERSION = "2.0"
-STORAGE_SCOPE = "tool"          # tool-private; widen only if genuinely needed
+STORAGE_SCOPE = "app"          # app scope + aps.kv is the well-supported path
 MAX_RECENT = 50
 
 MANIFEST = {
     "name": "tool-dev-error-journal",
     "version": "0.3.0",
     "description": "Diagnose technical errors and keep a persistent incident journal.",
-    # Required for APS. Without this, Nexus refuses the reverse RPC at the gate
-    # with -32021 STORAGE_NOT_GRANTED.
-    "host_capabilities": ["storage.tool"],
+    # APS grant. NOTE: the local harness reads host_capabilities from
+    # manifest.json (top level), not from here — keep both in sync.
+    "host_capabilities": ["aps.kv"],
     "tools": [
         {
             "name": "ping",

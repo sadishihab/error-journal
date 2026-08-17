@@ -1,12 +1,14 @@
 {
   "schema": 2,
   "permissions": ["tools.invoke", "storage.read", "storage.write"],
+  "host_capabilities": ["aps.kv"],
   "required_executas": [
     {
       "tool_id": "tool-dev-error-journal"
     }
   ],
-  "tags": ["error-journal"],
+  "system_prompt_addendum": "When the user pastes an error, traceback, stack trace, or failing log output, open the Error Journal window with open_app_view('error-journal', payload={'log': '<the raw error text>'}). The app fingerprints the error, diagnoses it, and checks whether the user has hit the same problem before. Do not paraphrase or summarise the error before passing it — send the raw text.",
+  "tags": ["debugging", "devops", "errors", "kubernetes", "docker", "python"],
   "ui": {
     "bundle": {
       "format": "static-spa",
@@ -16,10 +18,12 @@
     "views": [
       {
         "name": "main",
-        "title": "error-journal",
+        "title": "Error Journal",
         "default": true,
-        "default_size": { "w": 480, "h": 360 },
-        "min_size": { "w": 320, "h": 240 }
+        "default_size": { "w": 720, "h": 620 },
+        "min_size": { "w": 380, "h": 400 },
+        "max_size": { "w": 1400, "h": 1100 },
+        "single_instance": true
       }
     ],
     "host_api": {

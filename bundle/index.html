@@ -1,13 +1,63 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <title>error-journal</title>
-    <script src="./app.js" type="module"></script>
-  </head>
-  <body>
-    <h1>error-journal</h1>
-    <button id="primary-btn">Run</button>
-    <pre id="status">…</pre>
-  </body>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Error Journal</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <div id="app" class="shell">
+
+    <header class="masthead">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <h1>Error Journal</h1>
+      </div>
+      <nav class="tabs" role="tablist">
+        <button class="tab is-active" role="tab" data-tab="intake" aria-selected="true">Diagnose</button>
+        <button class="tab" role="tab" data-tab="log" aria-selected="false">
+          Logbook <span class="tab-count" id="logCount"></span>
+        </button>
+      </nav>
+    </header>
+
+    <!-- ---------------------------------------------------------- intake -->
+    <section class="panel is-active" id="panel-intake" role="tabpanel">
+      <label class="field-label" for="logInput">Paste the error</label>
+      <div class="paper">
+        <textarea
+          id="logInput"
+          spellcheck="false"
+          placeholder="Traceback (most recent call last):&#10;  File &quot;main.py&quot;, line 12, in <module>&#10;    import requests&#10;ModuleNotFoundError: No module named 'requests'"
+        ></textarea>
+      </div>
+
+      <div class="intake-actions">
+        <input
+          id="contextInput"
+          class="context-input"
+          type="text"
+          placeholder="Where? (optional — e.g. prod-cluster)"
+          maxlength="60"
+        />
+        <button id="diagnoseBtn" class="btn-primary">
+          <span class="btn-text">Diagnose</span>
+          <span class="btn-spinner" aria-hidden="true"></span>
+        </button>
+      </div>
+
+      <div id="status" class="status" role="status" aria-live="polite"></div>
+      <div id="result" class="result"></div>
+    </section>
+
+    <!-- ------------------------------------------------------------- log -->
+    <section class="panel" id="panel-log" role="tabpanel">
+      <div id="logList" class="log-list"></div>
+    </section>
+
+  </div>
+
+  <script type="module" src="./app.js"></script>
+</body>
 </html>
