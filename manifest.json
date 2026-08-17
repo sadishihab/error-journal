@@ -8,6 +8,9 @@
   "required_executas": [
     {
       "tool_id": "bundled:error-journal"
+    },
+    {
+      "tool_id": "skill-sadi-error-journal-dfmf46ck"
     }
   ],
   "system_prompt_addendum": "When the user pastes an error, traceback, stack trace, or failing log output, open the Error Journal window with open_app_view('error-journal', payload={'log': '<the raw error text>'}). The app fingerprints the error, diagnoses it, and checks whether the user has hit the same problem before. Do not paraphrase or summarise the error before passing it \u2014 send the raw text.",
