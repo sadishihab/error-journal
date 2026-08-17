@@ -130,6 +130,14 @@ note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace"""
     import requests
 ModuleNotFoundError: No module named 'requests'"""),
 
+    ("ruby: NoMethodError on nil", "app/models/user.rb:12:in `full_name': undefined method `upcase' for nil:NilClass (NoMethodError)"),
+    ("ruby: LoadError gem", "/usr/lib/ruby/rubygems.rb:275:in `require': cannot load such file -- nokogiri (LoadError)"),
+    ("ruby: rails RecordNotFound", "app/jobs/sync.rb:44:in `perform': ActiveRecord::RecordNotFound: Couldn't find User with id=99"),
+    ("php: class not found", 'PHP Fatal error:  Uncaught Error: Class "App\\Models\\User" not found in /var/www/html/index.php:14'),
+    ("php: undefined function", "PHP Fatal error:  Uncaught Error: Call to undefined function mysqli_connect() in /var/www/app.php:8"),
+    ("php: memory exhausted", "PHP Fatal error:  Allowed memory size of 134217728 bytes exhausted in /var/www/big.php on line 22"),
+    ("java: ClassNotFound", "Exception in thread \"main\" java.lang.ClassNotFoundException: org.postgresql.Driver\n\tat java.base/java.net.URLClassLoader.findClass(URLClassLoader.java:445)"),
+    ("java: OutOfMemory", "Exception in thread \"main\" java.lang.OutOfMemoryError: Java heap space\n\tat com.example.Loader.load(Loader.java:88)"),
     ("shell: generic", "bash: kubectl: command not found"),
     ("net: refused", "curl: (7) Failed to connect to localhost port 8080 after 0 ms: Connection refused"),
 ]

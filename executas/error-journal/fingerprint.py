@@ -207,7 +207,7 @@ def _detect_python(raw: str) -> Optional[tuple]:
     return cat, f"{exc_type}: {exc_msg}", identity, None
 
 
-def _detect_docker(raw: str) -> Optional[tuple[str, str, dict]]:
+def _detect_docker(raw: str) -> Optional[tuple]:
     patterns = [
         (r"port is already allocated", "docker.port_conflict"),
         (r"Cannot connect to the Docker daemon", "docker.daemon"),
@@ -219,12 +219,47 @@ def _detect_docker(raw: str) -> Optional[tuple[str, str, dict]]:
     ]
     for pat, cat in patterns:
         m = re.search(pat, raw, re.I)
-        if m:
-            identity = {}
-            port = re.search(r"0\.0\.0\.0:(\d+)", raw)
-            if port:
-                identity["port"] = port.group(1)
-            return cat, m.group(0), identity, identity.get("port")
+        if not m:
+            continue
+
+        identity = {}
+        scope = None
+
+        port = re.search(r"0\.0\.0\.0:(\d+)", raw)
+        if port:
+            identity["port"] = port.group(1)
+
+        if cat == "docker.build":
+            # Scope to the failing step. Without this every BuildKit failure
+            # collapses into one fingerprint and the occurrence count is
+            # meaningless. Prefer the shell command, fall back to the stage.
+            cmd = re.search(
+                r'process "(?:/bin/sh -c )?(.+?)" did not complete', raw
+            )
+            if not cmd:
+                cmd = re.search(r"=> ERROR \[[^\]]+\]\s+(?:RUN|COPY|ADD)\s+(.+?)\s{2,}", raw)
+            if not cmd:
+                cmd = re.search(r"^\s*\d+\s*\|\s*>>>\s*(?:RUN|COPY|ADD)\s+(.+)$", raw, re.M)
+            if cmd:
+                step = re.sub(r"\s+", " ", cmd.group(1)).strip()[:80]
+                identity["failing_step"] = step
+                scope = step
+            else:
+                stage = re.search(r"=> ERROR \[([^\]]+)\]", raw)
+                if stage:
+                    identity["stage"] = stage.group(1)
+                    scope = stage.group(1)
+
+        elif cat == "docker.port_conflict":
+            scope = identity.get("port")
+
+        elif cat in ("docker.auth", "docker.image_missing"):
+            img = re.search(r"(?:for |image )([\w.\-]+(?:\.[\w.\-]+)*(?:/[\w.\-]+)+)", raw)
+            if img:
+                identity["repo"] = repo_of(img.group(1))
+                scope = identity["repo"]
+
+        return cat, m.group(0), identity, scope
     return None
 
 
@@ -326,6 +361,83 @@ def _detect_rust(raw: str) -> Optional[tuple]:
     return "rust.panic", detail or "panic", identity, None
 
 
+def _detect_ruby(raw: str) -> Optional[tuple]:
+    # Ruby frames: "file.rb:12:in `method'" — distinctive enough to gate on.
+    if not re.search(r"\.rb:\d+:in [`']", raw) and "gems/" not in raw:
+        return None
+
+    exc = None
+    msg = ""
+
+    # Form 1 (CLI): "...: message (ExceptionClass)" — class in trailing parens.
+    m = re.search(r":\s*(.*?)\s*\(([A-Z]\w*(?:::\w+)*)\)\s*$", raw, re.M)
+    if m:
+        msg, exc = m.group(1), m.group(2)
+    else:
+        # Form 2 (Rails/logger): "Namespace::ClassName: message"
+        m = re.search(r"([A-Z]\w*(?:::\w+)+|[A-Z]\w*(?:Error|Exception)):\s*(.*)$", raw, re.M)
+        if m:
+            exc, msg = m.group(1), m.group(2)
+
+    if not exc:
+        return None
+
+    short = exc.split("::")[-1]
+    ident = {"language": "ruby", "exception": exc}
+
+    if short == "NoMethodError":
+        meth = re.search(r"undefined method [`']([^']+)'", raw)
+        if meth:
+            ident["method"] = meth.group(1)
+        return "ruby.no_method_error", f"undefined method {ident.get('method','')}", ident, None
+
+    if short == "LoadError":
+        lib = re.search(r"cannot load such file -- ([\w./\-]+)", raw)
+        if lib:
+            ident["library"] = lib.group(1)
+            return "ruby.load_error", f"cannot load such file -- {lib.group(1)}", ident, None
+
+    if short == "NameError":
+        var = re.search(r"undefined local variable or method [`']([^']+)'", raw)
+        if var:
+            ident["name"] = var.group(1)
+
+    return "ruby." + _snake(short), f"{short}: {msg}".strip(), ident, None
+
+
+def _detect_php(raw: str) -> Optional[tuple]:
+    m = re.search(
+        r"PHP (Fatal error|Warning|Parse error|Notice):\s*(?:Uncaught\s+)?(.+?)(?: in |$)",
+        raw,
+    )
+    if not m:
+        m = re.search(r"Fatal error:\s*(?:Uncaught\s+)?(.+?)(?: in |$)", raw)
+        if not m:
+            return None
+        level, msg = "Fatal error", m.group(1)
+    else:
+        level, msg = m.group(1), m.group(2)
+
+    msg = msg.strip()
+    ident = {"language": "php", "level": level}
+
+    if "Class" in msg and "not found" in msg:
+        cls = re.search(r'Class ["\']?([\w\\\\]+)["\']? not found', msg)
+        if cls:
+            ident["class"] = cls.group(1)
+        return "php.class_not_found", "Class not found", ident, None
+    if "Call to undefined function" in msg:
+        fn = re.search(r"Call to undefined function ([\w\\\\]+)", msg)
+        if fn:
+            ident["function"] = fn.group(1)
+        return "php.undefined_function", "Call to undefined function", ident, None
+    if "Allowed memory size" in msg:
+        return "php.memory_exhausted", "Allowed memory size exhausted", ident, None
+    if "failed to open stream" in msg:
+        return "php.file_not_found", "failed to open stream", ident, None
+    return "php." + _snake(level.replace(" ", "")), msg[:120], ident, None
+
+
 DETECTORS = [
     _detect_k8s,
     # Language detectors with distinctive markers run before the Python one:
@@ -333,6 +445,8 @@ DETECTORS = [
     _detect_go,
     _detect_java,
     _detect_rust,
+    _detect_ruby,
+    _detect_php,
     _detect_node,
     _detect_python,
     _detect_docker,

@@ -386,6 +386,148 @@ KB = {
         "verify_command": None,
         "confidence": 0.85,
     },
+    "java.class_not_found_exception": {
+        "severity": "high",
+        "root_cause": "A class named at runtime is not on the classpath.",
+        "fix_steps": [
+            "Confirm the dependency is declared in pom.xml / build.gradle",
+            "mvn dependency:tree | grep <artifact>   — is it actually resolved?",
+            "Provided/compileOnly scope means it is absent at runtime — check the scope",
+            "Fat-jar builds: verify the shade/shadow plugin included it",
+        ],
+        "verify_command": "mvn dependency:tree",
+        "confidence": 0.85,
+    },
+    "java.no_class_def_found_error": {
+        "severity": "high",
+        "root_cause": (
+            "The class was present at compile time but is missing at runtime — "
+            "or its static initialiser threw."
+        ),
+        "fix_steps": [
+            "Different from ClassNotFoundException: it compiled, so this is a runtime gap",
+            "Check for a version mismatch between compile and runtime classpaths",
+            "Look further up the log for an ExceptionInInitializerError",
+        ],
+        "verify_command": None,
+        "confidence": 0.8,
+    },
+    "java.out_of_memory_error": {
+        "severity": "high",
+        "root_cause": "The JVM heap (or metaspace) was exhausted.",
+        "fix_steps": [
+            "Read which space failed: 'Java heap space' vs 'Metaspace' differ",
+            "Raise it: -Xmx2g (heap) or -XX:MaxMetaspaceSize (metaspace)",
+            "In containers, prefer -XX:MaxRAMPercentage over a fixed -Xmx",
+            "Repeated OOM after a raise means a leak — take a heap dump",
+        ],
+        "verify_command": "jcmd <pid> GC.heap_info",
+        "confidence": 0.85,
+    },
+    "java.sql_exception": {
+        "severity": "high",
+        "root_cause": "The database rejected the connection or the statement.",
+        "fix_steps": [
+            "The vendor error code in the message is the real detail — read it",
+            "Connection refused -> host/port/firewall; auth failed -> credentials",
+            "'No suitable driver' means the JDBC driver is not on the classpath",
+        ],
+        "verify_command": None,
+        "confidence": 0.75,
+    },
+    # ------------------------------------------------------------- ruby ---
+    "ruby.no_method_error": {
+        "severity": "medium",
+        "root_cause": (
+            "A method was called on an object that does not define it — "
+            "very often the receiver is nil."
+        ),
+        "fix_steps": [
+            "'for nil:NilClass' means the receiver was nil, not that the method is missing",
+            "Trace back to where the value should have been set",
+            "Use &. for safe navigation where nil is legitimate",
+        ],
+        "verify_command": None,
+        "confidence": 0.85,
+    },
+    "ruby.load_error": {
+        "severity": "medium",
+        "root_cause": "A required file or gem could not be found on the load path.",
+        "fix_steps": [
+            "bundle install                     # is the gem actually installed?",
+            "Confirm it is in the Gemfile, and run under bundle exec",
+            "Native-extension gems can fail to build silently — reinstall and read the output",
+        ],
+        "verify_command": "bundle exec ruby -e \"require '<lib>'\"",
+        "confidence": 0.85,
+    },
+    "ruby.name_error": {
+        "severity": "low",
+        "root_cause": "An undefined local variable or constant was referenced.",
+        "fix_steps": [
+            "Usually a typo, or a variable defined in a different scope",
+            "For constants, check the class is required/autoloaded",
+            "In Rails, a naming mismatch breaks autoloading — file name must match the class",
+        ],
+        "verify_command": None,
+        "confidence": 0.8,
+    },
+    "ruby.record_not_found": {
+        "severity": "low",
+        "root_cause": "An ActiveRecord lookup found no matching row.",
+        "fix_steps": [
+            "find raises; find_by returns nil — pick the one matching your intent",
+            "Confirm the id exists and is not scoped away by a default_scope",
+            "In controllers, rescue_from and return 404 rather than a 500",
+        ],
+        "verify_command": None,
+        "confidence": 0.8,
+    },
+    # -------------------------------------------------------------- php ---
+    "php.class_not_found": {
+        "severity": "high",
+        "root_cause": "The autoloader could not resolve the class.",
+        "fix_steps": [
+            "composer dump-autoload",
+            "Check the namespace matches the PSR-4 path in composer.json exactly",
+            "Case matters on Linux even though it may work on macOS",
+        ],
+        "verify_command": "composer dump-autoload -o",
+        "confidence": 0.85,
+    },
+    "php.undefined_function": {
+        "severity": "medium",
+        "root_cause": "A PHP extension providing the function is not installed or enabled.",
+        "fix_steps": [
+            "php -m | grep <ext>              # is the extension loaded?",
+            "Install it: apt install php-<ext>  (or docker-php-ext-install <ext>)",
+            "Restart php-fpm after enabling — the CLI and FPM load separate ini files",
+        ],
+        "verify_command": "php -m",
+        "confidence": 0.9,
+    },
+    "php.memory_exhausted": {
+        "severity": "high",
+        "root_cause": "The script exceeded memory_limit.",
+        "fix_steps": [
+            "Raise memory_limit in php.ini, or ini_set for one script",
+            "Loading a large result set at once is the usual cause — chunk it",
+            "-1 means unlimited; use it only for CLI, never for web",
+        ],
+        "verify_command": "php -i | grep memory_limit",
+        "confidence": 0.85,
+    },
+    "php.file_not_found": {
+        "severity": "medium",
+        "root_cause": "A file operation targeted a path that does not exist or is unreadable.",
+        "fix_steps": [
+            "Check the path relative to the script, not the cwd",
+            "Confirm the web server user can read it (www-data, nginx)",
+            "open_basedir restrictions can block otherwise-valid paths",
+        ],
+        "verify_command": None,
+        "confidence": 0.8,
+    },
     "shell.command_not_found": {
         "severity": "low",
         "root_cause": "The binary is not installed, or not on PATH for this shell.",
