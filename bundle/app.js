@@ -105,16 +105,12 @@ function renderResult(d) {
   }
   parts.push("</div>");
 
-  // Recall band — the reason the journal exists.
-  if (seen) {
-    const where = h.contexts?.length ? ` in <b>${esc(h.contexts.join(", "))}</b>` : "";
-    let line = `You first hit this <b>${esc(ago(h.first_seen))}</b>${where}.`;
-    if (h.known_working_fix) {
-      line += ` What fixed it last time: <b>${esc(h.known_working_fix)}</b>`;
-    }
+  // Recall band — the reason the journal exists. The plugin builds this
+  // sentence so every surface says the same thing.
+  if (seen && h.headline) {
     parts.push(
       `<div class="section recall"><div class="section-label">From your logbook</div>` +
-      `<div class="prose">${line}</div></div>`
+      `<div class="prose">${esc(h.headline)}</div></div>`
     );
   }
 
