@@ -26,7 +26,11 @@ from knowledge import KB, UNKNOWN  # noqa: E402
 
 
 PROTOCOL_VERSION = "2.0"
-STORAGE_SCOPE = "app"          # app scope + aps.kv is the well-supported path
+# The host only issues storage tokens for scope 'tool' or 'user' —
+# scope='app' is rejected with -32029. 'user' is also the semantically
+# correct choice: this is one person's incident journal, and it should
+# follow them across every surface the app runs on.
+STORAGE_SCOPE = "user"
 MAX_RECENT = 50
 
 # Storage is a bonus; the diagnosis is the product. If the host does not
@@ -42,7 +46,7 @@ MAX_LOG_CHARS = 4000        # keep prompts small; the tail carries the error
 
 MANIFEST = {
     "name": "error-journal",
-    "version": "0.3.2",
+    "version": "0.3.3",
     "description": (
         "Diagnose a pasted error, traceback, or failing log. Returns a stable "
         "fingerprint, root cause, ordered fix steps, and whether the user has "
@@ -50,7 +54,13 @@ MANIFEST = {
     ),
     # APS grant. NOTE: the harness reads host_capabilities from the top level
     # of manifest.json, not from here — keep both in sync.
-    "host_capabilities": ["aps.kv", "llm.sample"],
+    # aps.kv covers scope='app', which the host refuses. Declare the
+    # explicit user-scope grants instead, matching STORAGE_SCOPE above.
+    "host_capabilities": [
+        "aps.scope.user.read",
+        "aps.scope.user.write",
+        "llm.sample",
+    ],
     "tools": [
         {
             "name": "ping",
@@ -260,6 +270,15 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def _human_date(iso: str) -> str:
+    """'2026-08-12T09:14:00+00:00' -> '12 August'."""
+    try:
+        d = datetime.fromisoformat(iso)
+    except (TypeError, ValueError):
+        return "an earlier date"
+    return f"{d.day} {d.strftime('%B')}"
+
+
 def _touch_recent(fp: str, category: str, invoke_id=None) -> None:
     """Best-effort index update. Must never break a diagnosis."""
     try:
@@ -302,13 +321,32 @@ def journal(fp_obj, context: str, invoke_id=None) -> dict:
     _touch_recent(fp_obj.fingerprint, fp_obj.category, invoke_id)
 
     working = [r for r in record.get("resolutions", []) if r.get("worked")]
+    fix = working[-1]["fix"] if working else None
+    n = record["occurrence_count"]
+
+    # Build the sentence here rather than leaving the model to assemble it
+    # from four separate fields. Assembly is the step that gets skipped, and
+    # this line IS the product — it must not be optional.
+    if seen_before:
+        ordinal = {2: "2nd", 3: "3rd"}.get(n, f"{n}th")
+        where = f" in {', '.join(record['contexts'])}" if record.get("contexts") else ""
+        headline = (
+            f"This is the {ordinal} time you have hit this{where} — "
+            f"first seen {_human_date(record['first_seen'])}."
+        )
+        if fix:
+            headline += f" What fixed it last time: {fix}"
+    else:
+        headline = "First time you have hit this — it is now in your journal."
+
     return {
+        "headline": headline,          # print this verbatim, before anything else
         "seen_before": seen_before,
-        "occurrence_count": record["occurrence_count"],
+        "occurrence_count": n,
         "first_seen": record["first_seen"],
         "last_seen": record["last_seen"],
         "contexts": record.get("contexts", []),
-        "known_working_fix": working[-1]["fix"] if working else None,
+        "known_working_fix": fix,
         "resolutions": record.get("resolutions", []),
     }
 
@@ -480,10 +518,18 @@ def diagnose(log: str, context: str = "", invoke_id=None) -> dict:
 
     try:
         out["history"] = journal(fp, context, invoke_id)
+        # Duplicated at the top level so it cannot be missed inside a
+        # nested object. Consumers should lead with this.
+        out["headline"] = out["history"]["headline"]
     except StorageUnavailable as e:
         out["journal_available"] = False
         out["journal_error"] = str(e)
+        out["headline"] = None
 
+    out["display_note"] = (
+        "Present `headline` first, verbatim, then root_cause, then fix_steps "
+        "in order without rewording them. Always include the fingerprint."
+    )
     return out
 
 
