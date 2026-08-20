@@ -73,7 +73,8 @@ jobs:
             | ./dist/${{ matrix.exe }} > out.json
           cat out.json
           grep -q '"diagnose_error"' out.json
-          grep -q '"aps.kv"' out.json
+          grep -q '"aps.scope.user.read"' out.json
+          grep -q '"name": "log"' out.json
           echo "smoke test passed"
 
       - name: Stage archive contents
