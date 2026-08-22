@@ -143,6 +143,86 @@ ModuleNotFoundError: No module named 'requests'"""),
     ("orphan ANSI (esc stripped)", "[31mERROR[0m: [1mModuleNotFoundError[0m: No module named 'requests'"),
     ("shell: generic", "bash: kubectl: command not found"),
     ("net: refused", "curl: (7) Failed to connect to localhost port 8080 after 0 ms: Connection refused"),
+
+    # ---------------------------------------------------------------- git ---
+    ("git: SSH permission denied (publickey)", """git@github.com: Permission denied (publickey).
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists."""),
+
+    (
+        "git: push rejected, non-fast-forward",
+        # approx — hint block wording reconstructed from memory; verify
+        # against real git output before trusting this as ground truth
+        """To github.com:sadishihab/error-journal.git
+ ! [rejected]        main -> main (fetch first)
+error: failed to push some refs to 'github.com:sadishihab/error-journal.git'
+hint: Updates were rejected because the remote contains work that you do
+hint: not have locally. This is usually caused by another repository pushing
+hint: to the same ref. You may want to first integrate the remote changes
+hint: (e.g., 'git pull ...') before pushing again.
+hint: See the 'Note about fast-forwards' in 'git push --help' for details.""",
+    ),
+
+    ("git: merge conflict", """Auto-merging src/app.py
+CONFLICT (content): Merge conflict in src/app.py
+Automatic merge failed; fix conflicts and then commit the result."""),
+
+    ("git: no upstream branch", """fatal: The current branch feature/error-journal-git has no upstream branch.
+To push the current branch and set the remote as upstream, use
+
+    git push --set-upstream origin feature/error-journal-git"""),
+
+    # ------------------------------------------------------------ database ---
+    ("db: psycopg2 connection refused", """Traceback (most recent call last):
+  File "/app/db.py", line 12, in connect
+    conn = psycopg2.connect(dsn)
+psycopg2.OperationalError: connection to server at "localhost" (127.0.0.1), port 5432 failed: Connection refused
+\tIs the server running on that host and accepting TCP/IP connections?"""),
+
+    ("db: psql password authentication failed",
+     'psql: error: connection to server at "localhost" (127.0.0.1), port 5432 failed: FATAL:  password authentication failed for user "app_user"'),
+
+    ("db: postgres too many clients",
+     "psycopg2.OperationalError: FATAL:  sorry, too many clients already"),
+
+    ("db: mysql access denied",
+     "ERROR 1045 (28000): Access denied for user 'app'@'10.0.0.5' (using password: YES)"),
+
+    ("db: mysql cannot connect via socket",
+     "ERROR 2002 (HY000): Can't connect to local MySQL server through socket '/var/run/mysqld/mysqld.sock' (2)"),
+
+    # ------------------------------------------------------------- systemd ---
+    ("systemd: job failed to start", """Job for nginx.service failed because the control process exited with error code.
+See "systemctl status nginx.service" and "journalctl -xeu nginx.service" for details."""),
+
+    (
+        "systemd: unit not found",
+        # approx — exact wording reconstructed from memory; verify against
+        # real systemctl output before trusting this as ground truth
+        "Failed to start foo.service: Unit foo.service not found.",
+    ),
+
+    ("systemd: journal shows non-zero exit", """Aug 23 09:14:02 web-01 systemd[1]: myapp.service: Main process exited, code=exited, status=1/FAILURE
+Aug 23 09:14:02 web-01 systemd[1]: myapp.service: Failed with result 'exit-code'."""),
+
+    # ---------------------------------------------------------------- build ---
+    ("build: webpack cannot resolve module", """ERROR in ./src/App.js
+Module not found: Error: Can't resolve './components/Header' in '/app/src'
+ @ ./src/index.js 5:0-45"""),
+
+    (
+        "build: vite failed to resolve import",
+        # approx — exact prefix wording reconstructed from memory; verify
+        # against real vite output before trusting this as ground truth
+        'Failed to resolve import "./components/Header" from "src/App.jsx". Does the file exist?',
+    ),
+
+    ("build: tsc TS2307 module not found", """src/api/client.ts:3:22 - error TS2307: Cannot find module './types' or its corresponding type declarations.
+
+3 import { User } from './types';
+                       ~~~~~~~~~"""),
 ]
 
 

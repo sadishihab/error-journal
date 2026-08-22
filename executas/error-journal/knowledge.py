@@ -744,6 +744,551 @@ KB = {
         "verify_command": "openssl s_client -connect <host>:443",
         "confidence": 0.8,
     },
+    # --------------------------------------------------------------- git ---
+    "git.auth_publickey": {
+        "severity": "medium",
+        "root_cause": "SSH could not authenticate to the remote — no key offered, or none accepted.",
+        "fix_steps": [
+            "ssh -T git@github.com          # does the host recognise you at all?",
+            "ssh-add -l                     # is a key loaded in the agent?",
+            "If empty: ssh-add ~/.ssh/id_ed25519",
+            "Key must be mode 600 — SSH silently ignores world-readable keys",
+            "Confirm the PUBLIC key is added to the account, not the private one",
+        ],
+        "verify_command": "ssh -T git@github.com",
+        "confidence": 0.9,
+    },
+    "git.push_rejected_behind": {
+        "severity": "low",
+        "root_cause": "The remote has commits you do not have locally, so the push would lose them.",
+        "fix_steps": [
+            "git pull --rebase              # replay your work on top of theirs",
+            "Resolve any conflicts, then: git rebase --continue",
+            "git push",
+            "Do NOT reach for --force: it deletes the commits you were warned about. "
+            "If you genuinely must overwrite, use --force-with-lease, which refuses "
+            "if someone pushed after your last fetch.",
+        ],
+        "verify_command": "git log --oneline origin/main..HEAD",
+        "confidence": 0.9,
+    },
+    "git.push_rejected": {
+        "severity": "low",
+        "root_cause": "The remote refused the push. The hint lines above name the specific reason.",
+        "fix_steps": [
+            "git fetch && git status        # see how the branches relate",
+            "Protected branch? Open a pull request instead of pushing directly",
+            "Non-fast-forward? git pull --rebase first",
+        ],
+        "verify_command": "git status -sb",
+        "confidence": 0.7,
+    },
+    "git.merge_conflict": {
+        "severity": "low",
+        "root_cause": "The same lines changed on both sides, so git cannot merge automatically.",
+        "fix_steps": [
+            "git status                     # lists every conflicted file",
+            "Edit each file: remove <<<<<<<, =======, >>>>>>> and keep what you want",
+            "git add <file> for each resolved file, then git commit",
+            "Wrong turn? git merge --abort returns you to before the merge",
+            "Prefer resolving in a diff tool over hand-editing markers: git mergetool",
+        ],
+        "verify_command": "git diff --check",
+        "confidence": 0.9,
+    },
+    "git.index_lock": {
+        "severity": "low",
+        "root_cause": (
+            "Another git process holds the lock — or one crashed and left it behind."
+        ),
+        "fix_steps": [
+            "Check nothing is actually running: ps aux | grep git",
+            "An editor or IDE running git in the background is the usual culprit",
+            "Only if nothing is running: rm -f .git/index.lock",
+            "Deleting the lock while a real process holds it can corrupt the index",
+        ],
+        "verify_command": "git status",
+        "confidence": 0.9,
+    },
+    "git.detached_head": {
+        "severity": "low",
+        "root_cause": (
+            "HEAD points at a commit rather than a branch. Commits made here belong "
+            "to no branch and are easy to lose."
+        ),
+        "fix_steps": [
+            "Just looking? git switch -    returns you to where you were",
+            "Made commits you want to keep: git switch -c <new-branch>",
+            "Already switched away and lost them? git reflog finds the commit",
+        ],
+        "verify_command": "git status",
+        "confidence": 0.9,
+    },
+    "git.no_upstream": {
+        "severity": "low",
+        "root_cause": "The branch has no remote counterpart, so git does not know where to push.",
+        "fix_steps": [
+            "git push -u origin HEAD       # pushes and sets upstream in one go",
+            "-u only needs doing once per branch",
+            "To make this automatic: git config --global push.autoSetupRemote true",
+        ],
+        "verify_command": "git status -sb",
+        "confidence": 0.95,
+    },
+    "git.not_a_repo": {
+        "severity": "low",
+        "root_cause": "Neither this directory nor any parent contains a .git directory.",
+        "fix_steps": [
+            "pwd                            # you are probably not where you think",
+            "Starting fresh? git init",
+            "Meant to clone? git clone <url> and cd into it",
+        ],
+        "verify_command": "git rev-parse --show-toplevel",
+        "confidence": 0.95,
+    },
+    "git.local_changes_overwritten": {
+        "severity": "medium",
+        "root_cause": "The incoming change touches files you have modified but not committed.",
+        "fix_steps": [
+            "Want to keep them: git stash, then pull, then git stash pop",
+            "Want to keep them permanently: commit first, then pull",
+            "Genuinely want to discard: git checkout -- <file> — this is unrecoverable",
+            "Unsure? git stash is always the safe option; nothing is lost",
+        ],
+        "verify_command": "git status",
+        "confidence": 0.9,
+    },
+    "git.unrelated_histories": {
+        "severity": "medium",
+        "root_cause": (
+            "The two branches share no common ancestor — usually a local repo being "
+            "merged with a remote that was initialised separately."
+        ),
+        "fix_steps": [
+            "Confirm this is what you intend: the histories are genuinely unrelated",
+            "git pull --allow-unrelated-histories",
+            "Expect conflicts, including on README and .gitignore",
+        ],
+        "verify_command": "git log --oneline --graph --all | head -20",
+        "confidence": 0.85,
+    },
+    "git.password_auth_removed": {
+        "severity": "medium",
+        "root_cause": "GitHub stopped accepting account passwords over HTTPS in 2021.",
+        "fix_steps": [
+            "Use a personal access token as the password, not your account password",
+            "Or switch to SSH: git remote set-url origin git@github.com:<owner>/<repo>.git",
+            "SSH avoids token expiry entirely — worth doing once",
+        ],
+        "verify_command": "git remote -v",
+        "confidence": 0.95,
+    },
+    "git.repo_not_found": {
+        "severity": "medium",
+        "root_cause": (
+            "The remote path is wrong, or you lack access. A private repo you cannot "
+            "read is reported as not found, deliberately."
+        ),
+        "fix_steps": [
+            "git remote -v                  # check the URL for typos",
+            "Private repo? Confirm your account actually has access",
+            "SSH key belongs to a different account than you expect? ssh -T git@github.com",
+        ],
+        "verify_command": "git ls-remote origin",
+        "confidence": 0.85,
+    },
+    # ---------------------------------------------------------- database ---
+    "db.pg_auth_failed": {
+        "severity": "medium",
+        "root_cause": "Postgres rejected the credentials for that role.",
+        "fix_steps": [
+            "Check the role exists: psql -U postgres -c '\\du'",
+            "In containers, the app often reads a different env var than you set "
+            "\u2014 print the DSN the app actually used",
+            "pg_hba.conf controls WHICH auth method applies per host/user; a 'trust' "
+            "line locally and 'md5' remotely explains 'works on my machine'",
+            "Special characters in the password must be URL-encoded inside a DSN",
+        ],
+        "verify_command": "psql \"$DATABASE_URL\" -c 'select 1'",
+        "confidence": 0.85,
+    },
+    "db.pg_database_missing": {
+        "severity": "medium",
+        "root_cause": "The named database does not exist on that server.",
+        "fix_steps": [
+            "psql -U postgres -c '\\l'      # list what does exist",
+            "Create it: createdb <name>",
+            "Postgres names are case-sensitive when quoted \u2014 check for stray quotes",
+            "In Docker, POSTGRES_DB only creates the DB on FIRST start; an existing "
+            "volume keeps the old one. Remove the volume or create it manually.",
+        ],
+        "verify_command": "psql -U postgres -lqt | cut -d'|' -f1",
+        "confidence": 0.9,
+    },
+    "db.pg_relation_missing": {
+        "severity": "medium",
+        "root_cause": "The table or view does not exist \u2014 usually migrations have not run.",
+        "fix_steps": [
+            "Run your migrations (alembic upgrade head, rails db:migrate, etc.)",
+            "\\dt in psql lists tables in the current search_path",
+            "Table exists but is not found? Check the schema: it may be in a schema "
+            "outside search_path",
+            "Connected to the wrong database entirely is the other common cause",
+        ],
+        "verify_command": "psql \"$DATABASE_URL\" -c '\\dt'",
+        "confidence": 0.85,
+    },
+    "db.pg_too_many_connections": {
+        "severity": "high",
+        "root_cause": (
+            "max_connections is exhausted. Almost always connection leakage or an "
+            "over-large pool, not genuine load."
+        ),
+        "fix_steps": [
+            "See who is connected: select count(*), state from pg_stat_activity group by state;",
+            "Lots of 'idle in transaction' means code is not closing transactions \u2014 fix that first",
+            "Pool size x replica count must stay under max_connections; this is the usual arithmetic error",
+            "Put PgBouncer in front rather than raising max_connections \u2014 each connection costs real memory",
+        ],
+        "verify_command": "psql -c 'select count(*) from pg_stat_activity'",
+        "confidence": 0.85,
+    },
+    "db.pg_deadlock": {
+        "severity": "high",
+        "root_cause": "Two transactions each hold a lock the other needs. Postgres killed one.",
+        "fix_steps": [
+            "The log names both statements \u2014 read them, the pattern is usually obvious",
+            "Most common fix: acquire locks in a consistent order everywhere",
+            "Batch updates sorted by primary key rather than in arbitrary order",
+            "Deadlocks are expected under load \u2014 retry the transaction rather than surfacing an error",
+        ],
+        "verify_command": None,
+        "confidence": 0.8,
+    },
+    "db.pg_connection_refused": {
+        "severity": "high",
+        "root_cause": "Nothing is listening at that host and port, or the connection was blocked.",
+        "fix_steps": [
+            "Is Postgres running? pg_isready -h <host> -p 5432",
+            "In Docker, 'localhost' means the container itself \u2014 use the service name",
+            "listen_addresses defaults to localhost only; remote access needs '*'",
+            "pg_hba.conf must also permit the client address",
+        ],
+        "verify_command": "pg_isready -h <host> -p 5432",
+        "confidence": 0.85,
+    },
+    "db.pg_ssl_required": {
+        "severity": "low",
+        "root_cause": "The server requires TLS and the client attempted a plaintext connection.",
+        "fix_steps": [
+            "Append ?sslmode=require to the connection URL",
+            "Managed providers (RDS, Cloud SQL, Neon, Supabase) all require this",
+            "sslmode=require encrypts but does not verify; use verify-full in production",
+        ],
+        "verify_command": "psql \"$DATABASE_URL?sslmode=require\" -c 'select 1'",
+        "confidence": 0.9,
+    },
+    "db.mysql_access_denied": {
+        "severity": "medium",
+        "root_cause": "MySQL rejected that user for that host.",
+        "fix_steps": [
+            "MySQL grants are per user AND host: 'app'@'localhost' and 'app'@'%' are different users",
+            "SELECT user, host FROM mysql.user;   shows what actually exists",
+            "'using password: NO' in the message means no password was sent at all",
+            "Connecting over TCP from a container needs a '%' or subnet host grant",
+        ],
+        "verify_command": "mysql -u <user> -p -e 'select 1'",
+        "confidence": 0.85,
+    },
+    "db.mysql_unknown_database": {
+        "severity": "medium",
+        "root_cause": "The named database does not exist on that server.",
+        "fix_steps": [
+            "SHOW DATABASES;",
+            "CREATE DATABASE <name>;",
+            "On Linux, database names are case-sensitive by default",
+        ],
+        "verify_command": "mysql -e 'show databases'",
+        "confidence": 0.9,
+    },
+    "db.mysql_cant_connect": {
+        "severity": "high",
+        "root_cause": "The client could not reach the server socket or port.",
+        "fix_steps": [
+            "systemctl status mysql",
+            "'via UNIX socket' means it tried a local socket \u2014 use -h 127.0.0.1 to force TCP",
+            "In containers, use the service name, not localhost",
+            "bind-address in my.cnf defaults to 127.0.0.1 and blocks remote clients",
+        ],
+        "verify_command": "mysqladmin ping -h <host>",
+        "confidence": 0.85,
+    },
+    "db.mysql_too_many_connections": {
+        "severity": "high",
+        "root_cause": "max_connections is exhausted.",
+        "fix_steps": [
+            "SHOW PROCESSLIST;   shows what is holding connections",
+            "Many sleeping connections means the app is not returning them to the pool",
+            "Raising max_connections buys time; fixing the leak fixes the problem",
+        ],
+        "verify_command": "mysql -e 'show status like \"Threads_connected\"'",
+        "confidence": 0.85,
+    },
+    "db.mysql_lock_timeout": {
+        "severity": "medium",
+        "root_cause": "A transaction waited too long for a row lock held by another.",
+        "fix_steps": [
+            "SELECT * FROM information_schema.innodb_trx;   finds long-running transactions",
+            "Usually a transaction left open by application code \u2014 commit or roll back promptly",
+            "Large batch updates hold locks; chunk them",
+        ],
+        "verify_command": None,
+        "confidence": 0.8,
+    },
+    "db.redis_oom": {
+        "severity": "high",
+        "root_cause": "Redis hit maxmemory and the eviction policy forbids evicting.",
+        "fix_steps": [
+            "redis-cli info memory | grep used_memory_human",
+            "Default policy is noeviction, which errors rather than dropping keys",
+            "Using Redis as a cache? Set maxmemory-policy allkeys-lru",
+            "Using it as a store? Raise maxmemory \u2014 evicting would lose data",
+            "Check for keys with no TTL: they accumulate forever",
+        ],
+        "verify_command": "redis-cli info memory",
+        "confidence": 0.9,
+    },
+    "db.redis_auth": {
+        "severity": "medium",
+        "root_cause": "Redis requires authentication and none, or the wrong credential, was sent.",
+        "fix_steps": [
+            "NOAUTH means no password sent; WRONGPASS means it was wrong",
+            "Include it in the URL: redis://:password@host:6379",
+            "Redis 6+ supports usernames (ACLs); older versions use the password only",
+        ],
+        "verify_command": "redis-cli -a <password> ping",
+        "confidence": 0.9,
+    },
+    "db.redis_readonly": {
+        "severity": "high",
+        "root_cause": "You are connected to a replica, which rejects writes.",
+        "fix_steps": [
+            "After a failover the old primary becomes a replica \u2014 clients holding the old address break",
+            "Use Sentinel or Cluster discovery rather than a hardcoded host",
+            "redis-cli info replication   confirms the role",
+        ],
+        "verify_command": "redis-cli info replication | grep role",
+        "confidence": 0.85,
+    },
+    "db.redis_connection_refused": {
+        "severity": "high",
+        "root_cause": "Nothing is listening on that Redis address.",
+        "fix_steps": [
+            "redis-cli -h <host> ping",
+            "In containers, use the service name rather than localhost",
+            "Redis binds to 127.0.0.1 by default; remote access needs bind 0.0.0.0 and protected-mode off",
+            "Do not expose Redis publicly without a password \u2014 it is scanned for constantly",
+        ],
+        "verify_command": "redis-cli -h <host> ping",
+        "confidence": 0.85,
+    },
+    "db.mongo_auth_failed": {
+        "severity": "medium",
+        "root_cause": "MongoDB rejected the credentials.",
+        "fix_steps": [
+            "Users belong to a specific database \u2014 authSource must match where the user was created",
+            "Add ?authSource=admin to the URI if the user lives in admin",
+            "URL-encode special characters in the password",
+        ],
+        "verify_command": "mongosh \"$MONGO_URI\" --eval 'db.runCommand({ping:1})'",
+        "confidence": 0.85,
+    },
+    "db.mongo_server_selection": {
+        "severity": "high",
+        "root_cause": "The driver could not reach any suitable server before timing out.",
+        "fix_steps": [
+            "Atlas? The client IP must be in the Network Access allow-list",
+            "mongodb+srv:// requires working DNS SRV lookups \u2014 some networks block them",
+            "For a replica set, EVERY member hostname must resolve from the client",
+        ],
+        "verify_command": "mongosh \"$MONGO_URI\" --eval 'db.runCommand({ping:1})'",
+        "confidence": 0.8,
+    },
+    # ----------------------------------------------------------- systemd ---
+    "systemd.job_failed": {
+        "severity": "high",
+        "root_cause": (
+            "The unit's main process exited non-zero. systemctl only tells you it "
+            "failed \u2014 the reason is in the journal."
+        ),
+        "fix_steps": [
+            "journalctl -u <unit> -n 50 --no-pager    # this is where the real error is",
+            "systemctl status <unit> -l               # last few lines plus exit code",
+            "Config change? Validate before restarting: nginx -t, sshd -t, etc.",
+            "Exit 203/EXEC means the ExecStart binary path is wrong or not executable",
+        ],
+        "verify_command": "systemctl status <unit>",
+        "confidence": 0.85,
+    },
+    "systemd.exited_nonzero": {
+        "severity": "high",
+        "root_cause": "The service process exited with a non-zero status.",
+        "fix_steps": [
+            "journalctl -u <unit> --since '5 min ago'",
+            "status=203/EXEC \u2014 ExecStart path wrong or not executable",
+            "status=200/CHDIR \u2014 WorkingDirectory does not exist",
+            "status=1 \u2014 the application itself failed; its own logs have the reason",
+            "Works by hand but not as a service? The unit has a different PATH, user and env",
+        ],
+        "verify_command": "journalctl -u <unit> -n 50 --no-pager",
+        "confidence": 0.85,
+    },
+    "systemd.unit_not_found": {
+        "severity": "medium",
+        "root_cause": "No unit file with that name is known to systemd.",
+        "fix_steps": [
+            "systemctl list-unit-files | grep <name>",
+            "New or edited unit file? systemctl daemon-reload",
+            "User units need --user; system units need root",
+            "Check the filename ends in .service and lives in /etc/systemd/system/",
+        ],
+        "verify_command": "systemctl list-unit-files | grep <name>",
+        "confidence": 0.9,
+    },
+    "systemd.unit_masked": {
+        "severity": "medium",
+        "root_cause": (
+            "The unit is masked \u2014 symlinked to /dev/null so it cannot start. This is "
+            "deliberate, not accidental."
+        ),
+        "fix_steps": [
+            "systemctl unmask <unit>",
+            "Find out why it was masked before unmasking \u2014 often a conflicting service",
+            "Masking is stronger than disabling: it blocks manual starts too",
+        ],
+        "verify_command": "systemctl is-enabled <unit>",
+        "confidence": 0.9,
+    },
+    "systemd.restart_loop": {
+        "severity": "high",
+        "root_cause": (
+            "The unit failed repeatedly and systemd gave up under its rate limit. The "
+            "restart loop is the symptom; the first failure is the cause."
+        ),
+        "fix_steps": [
+            "journalctl -u <unit> --since '10 min ago'   # scroll to the FIRST failure",
+            "systemctl reset-failed <unit>   clears the rate limit so it can start again",
+            "Fix the underlying failure before restarting, or it will loop again",
+            "StartLimitIntervalSec / StartLimitBurst control the threshold",
+        ],
+        "verify_command": "systemctl status <unit>",
+        "confidence": 0.85,
+    },
+    "systemd.start_failed": {
+        "severity": "high",
+        "root_cause": "The unit could not be started.",
+        "fix_steps": [
+            "journalctl -xeu <unit>    gives the failure with added explanation",
+            "Check for a port already in use: ss -ltnp | grep <port>",
+            "Check file permissions for the unit's User=",
+        ],
+        "verify_command": "systemctl status <unit>",
+        "confidence": 0.8,
+    },
+    "systemd.permission": {
+        "severity": "low",
+        "root_cause": "The operation needs privileges the current user does not have.",
+        "fix_steps": [
+            "Prefix with sudo",
+            "Over SSH without a TTY, polkit cannot prompt \u2014 use sudo explicitly",
+            "For a user-level service, add --user and drop sudo",
+        ],
+        "verify_command": None,
+        "confidence": 0.9,
+    },
+    # ------------------------------------------------------------- build ---
+    "build.webpack_resolve": {
+        "severity": "medium",
+        "root_cause": "The bundler could not resolve that import path.",
+        "fix_steps": [
+            "Case matters on Linux even when it works on macOS \u2014 check exact capitalisation",
+            "Relative path wrong? ./ and ../ are relative to the importing file, not the project root",
+            "Path alias (@/components)? It must be configured in BOTH tsconfig paths and the bundler",
+            "Package import? Confirm it is installed and in dependencies, not devDependencies",
+        ],
+        "verify_command": "ls -la <path>",
+        "confidence": 0.85,
+    },
+    "build.vite_resolve": {
+        "severity": "medium",
+        "root_cause": "Vite could not resolve the import.",
+        "fix_steps": [
+            "Vite requires file extensions for CSS and asset imports",
+            "Aliases go in vite.config resolve.alias, and must match tsconfig paths",
+            "Bare imports must be installed; Vite does not fall back to node_modules guessing",
+            "After installing a new dependency, restart the dev server \u2014 pre-bundling is cached",
+        ],
+        "verify_command": "ls -la <path>",
+        "confidence": 0.85,
+    },
+    "build.ts_2307": {
+        "severity": "medium",
+        "root_cause": "TypeScript cannot find the module or its type declarations.",
+        "fix_steps": [
+            "The JS may exist while the types do not: npm i -D @types/<package>",
+            "Local file? Check the path and that it is inside tsconfig include",
+            "Path alias needs both tsconfig paths AND the bundler's resolver",
+            "Some packages ship types only under specific moduleResolution settings \u2014 try 'bundler' or 'node16'",
+        ],
+        "verify_command": "npx tsc --noEmit",
+        "confidence": 0.85,
+    },
+    "build.gradle_resolve": {
+        "severity": "medium",
+        "root_cause": "Gradle could not resolve a dependency in the configuration.",
+        "fix_steps": [
+            "./gradlew <task> --stacktrace   names the specific artifact",
+            "Check the repositories block actually includes where the artifact lives",
+            "Private repo? Credentials must be in gradle.properties or the environment",
+            "Stale cache: ./gradlew --refresh-dependencies",
+        ],
+        "verify_command": "./gradlew dependencies --configuration runtimeClasspath",
+        "confidence": 0.8,
+    },
+    "build.gradle_failed": {
+        "severity": "medium",
+        "root_cause": "The build failed. The 'What went wrong' block names the cause.",
+        "fix_steps": [
+            "Read the '* What went wrong:' section \u2014 it is usually precise",
+            "./gradlew <task> --stacktrace --info   for the full trace",
+            "Java version mismatches are the most common cause: check JAVA_HOME against the toolchain",
+        ],
+        "verify_command": "./gradlew <task> --stacktrace",
+        "confidence": 0.65,
+    },
+    "build.maven_goal": {
+        "severity": "medium",
+        "root_cause": "A Maven plugin goal failed. The real error is above this line.",
+        "fix_steps": [
+            "Scroll UP \u2014 'Failed to execute goal' is the wrapper, not the cause",
+            "Compiler failures list the offending file and line above",
+            "mvn -e -X <goal>   for the full stack trace",
+            "Check maven.compiler.source/target against the JDK actually in use",
+        ],
+        "verify_command": "mvn -e clean install",
+        "confidence": 0.7,
+    },
+    "build.make_failed": {
+        "severity": "low",
+        "root_cause": "A make recipe exited non-zero. The real error is above this line.",
+        "fix_steps": [
+            "Scroll UP \u2014 the failing command's own output is the diagnosis",
+            "Run the failing command directly to see clean output",
+            "Recipes must be indented with a TAB, never spaces",
+        ],
+        "verify_command": None,
+        "confidence": 0.5,
+    },
     "shell.command_not_found": {
         "severity": "low",
         "root_cause": "The binary is not installed, or not on PATH for this shell.",

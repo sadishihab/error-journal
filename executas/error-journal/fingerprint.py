@@ -447,6 +447,185 @@ def _detect_php(raw: str) -> Optional[tuple]:
     return "php." + _snake(level.replace(" ", "")), msg[:120], ident, None
 
 
+def _detect_git(raw: str) -> Optional[tuple]:
+    # Gate on git's own vocabulary so plain "permission denied" from a shell
+    # does not get claimed here.
+    # Several of git's most common messages contain no "git" token at all,
+    # so the gate has to name the phrases themselves.
+    if not re.search(
+        r"\bgit\b|fatal:|\.git/|remote:|CONFLICT \(|Auto-merging|\[rejected\]"
+        r"|detached HEAD|would be overwritten by (?:merge|checkout)"
+        r"|Updates were rejected|index\.lock",
+        raw, re.I,
+    ):
+        return None
+
+    ident = {"tool": "git"}
+
+    if "Permission denied (publickey" in raw:
+        host = re.search(r"git@([\w.\-]+)", raw)
+        if host:
+            ident["host"] = host.group(1)
+        return "git.auth_publickey", "Permission denied (publickey)", ident, ident.get("host")
+
+    if re.search(r"Updates were rejected because", raw):
+        if "fetch first" in raw or "behind its remote" in raw:
+            return "git.push_rejected_behind", "Updates were rejected: behind remote", ident, None
+        return "git.push_rejected", "Updates were rejected", ident, None
+
+    m = re.search(r"CONFLICT \(([^)]+)\)", raw)
+    if m:
+        ident["conflict_type"] = m.group(1)
+        return "git.merge_conflict", f"CONFLICT ({m.group(1)})", ident, None
+
+    if "index.lock" in raw:
+        return "git.index_lock", "index.lock exists", ident, None
+
+    if re.search(r"detached HEAD", raw):
+        return "git.detached_head", "detached HEAD state", ident, None
+
+    if re.search(r"no upstream branch|--set-upstream", raw):
+        return "git.no_upstream", "no upstream branch", ident, None
+
+    if re.search(r"not a git repository", raw, re.I):
+        return "git.not_a_repo", "not a git repository", ident, None
+
+    if re.search(r"refusing to merge unrelated histories", raw):
+        return "git.unrelated_histories", "refusing to merge unrelated histories", ident, None
+
+    if re.search(r"Your local changes .* would be overwritten", raw):
+        return "git.local_changes_overwritten", "local changes would be overwritten", ident, None
+
+    if re.search(r"Repository not found|does not appear to be a git repository", raw):
+        return "git.repo_not_found", "repository not found", ident, None
+
+    if re.search(r"Support for password authentication was removed", raw):
+        return "git.password_auth_removed", "password authentication removed", ident, None
+
+    return None
+
+
+def _detect_database(raw: str) -> Optional[tuple]:
+    # ---- PostgreSQL ----
+    if re.search(r"psycopg2|psql|PG::|postgres|FATAL:.*role", raw, re.I):
+        m = re.search(r'password authentication failed for user "([^"]+)"', raw)
+        if m:
+            return "db.pg_auth_failed", "password authentication failed", {"db": "postgres", "user": m.group(1)}, None
+        m = re.search(r'database "([^"]+)" does not exist', raw)
+        if m:
+            return "db.pg_database_missing", "database does not exist", {"db": "postgres", "database": m.group(1)}, None
+        m = re.search(r'relation "([^"]+)" does not exist', raw)
+        if m:
+            return "db.pg_relation_missing", "relation does not exist", {"db": "postgres", "relation": m.group(1)}, None
+        if "deadlock detected" in raw:
+            return "db.pg_deadlock", "deadlock detected", {"db": "postgres"}, None
+        if re.search(r"too many clients already|remaining connection slots", raw):
+            return "db.pg_too_many_connections", "too many clients", {"db": "postgres"}, None
+        if re.search(r"could not connect to server|Connection refused", raw):
+            return "db.pg_connection_refused", "could not connect to server", {"db": "postgres"}, None
+        if re.search(r"SSL connection .* required|no encryption", raw):
+            return "db.pg_ssl_required", "SSL connection required", {"db": "postgres"}, None
+
+    # ---- MySQL / MariaDB ----
+    if re.search(r"mysql|mariadb|ER_\w+|ERROR \d{4} \(\w{5}\)", raw, re.I):
+        m = re.search(r"Access denied for user '([^']+)'", raw)
+        if m:
+            return "db.mysql_access_denied", "Access denied for user", {"db": "mysql", "user": m.group(1)}, None
+        m = re.search(r"Unknown database '([^']+)'", raw)
+        if m:
+            return "db.mysql_unknown_database", "Unknown database", {"db": "mysql", "database": m.group(1)}, None
+        if re.search(r"Can't connect to (?:local )?MySQL server", raw):
+            return "db.mysql_cant_connect", "cannot connect to MySQL server", {"db": "mysql"}, None
+        if "Too many connections" in raw:
+            return "db.mysql_too_many_connections", "Too many connections", {"db": "mysql"}, None
+        if re.search(r"Lock wait timeout exceeded", raw):
+            return "db.mysql_lock_timeout", "Lock wait timeout exceeded", {"db": "mysql"}, None
+
+    # ---- Redis ----
+    if re.search(r"redis", raw, re.I):
+        if re.search(r"OOM command not allowed", raw):
+            return "db.redis_oom", "OOM command not allowed", {"db": "redis"}, None
+        if re.search(r"NOAUTH|WRONGPASS", raw):
+            return "db.redis_auth", "authentication required", {"db": "redis"}, None
+        if re.search(r"READONLY You can't write", raw):
+            return "db.redis_readonly", "READONLY replica", {"db": "redis"}, None
+        if re.search(r"Connection refused|Error connecting", raw, re.I):
+            return "db.redis_connection_refused", "connection refused", {"db": "redis"}, None
+
+    # ---- MongoDB ----
+    if re.search(r"mongo", raw, re.I):
+        if re.search(r"Authentication failed", raw, re.I):
+            return "db.mongo_auth_failed", "authentication failed", {"db": "mongodb"}, None
+        if re.search(r"ServerSelectionTimeoutError|topology was destroyed", raw):
+            return "db.mongo_server_selection", "server selection timeout", {"db": "mongodb"}, None
+
+    return None
+
+
+def _detect_systemd(raw: str) -> Optional[tuple]:
+    if not re.search(r"systemctl|systemd|\.service|journalctl", raw, re.I):
+        return None
+
+    unit = re.search(r"([\w.@\-]+)\.service", raw)
+    ident = {"tool": "systemd"}
+    if unit:
+        ident["unit"] = unit.group(1)
+    scope = ident.get("unit")
+
+    if re.search(r"Unit .* (?:could not be found|not found)", raw, re.I):
+        return "systemd.unit_not_found", "unit not found", ident, scope
+    if re.search(r"Unit .* is masked", raw, re.I):
+        return "systemd.unit_masked", "unit is masked", ident, scope
+    m = re.search(r"code=exited, status=(\d+)", raw)
+    if m:
+        ident["exit_code"] = m.group(1)
+        return "systemd.exited_nonzero", f"code=exited status={m.group(1)}", ident, scope
+    if re.search(r"Job for .* failed", raw):
+        return "systemd.job_failed", "job for unit failed", ident, scope
+    if re.search(r"Failed to start", raw):
+        return "systemd.start_failed", "Failed to start unit", ident, scope
+    if re.search(r"Start request repeated too quickly", raw):
+        return "systemd.restart_loop", "start request repeated too quickly", ident, scope
+    if re.search(r"Failed to (?:enable|restart) unit.*Access denied|Interactive authentication required", raw):
+        return "systemd.permission", "interactive authentication required", ident, scope
+    return None
+
+
+def _detect_build(raw: str) -> Optional[tuple]:
+    # webpack / CRA
+    m = re.search(r"Module not found: Error: Can't resolve '([^']+)'", raw)
+    if m:
+        return "build.webpack_resolve", "Can't resolve module", {"tool": "webpack", "module": m.group(1)}, m.group(1)
+
+    # vite / rollup
+    m = re.search(r"Failed to resolve import \"([^\"]+)\"", raw)
+    if m:
+        return "build.vite_resolve", "Failed to resolve import", {"tool": "vite", "module": m.group(1)}, m.group(1)
+
+    # TypeScript
+    m = re.search(r"error TS(\d+):", raw)
+    if m:
+        return f"build.ts_{m.group(1)}", f"TS{m.group(1)}", {"tool": "typescript", "code": m.group(1)}, None
+
+    # Gradle
+    if re.search(r"Could not resolve all files for configuration", raw):
+        return "build.gradle_resolve", "could not resolve configuration", {"tool": "gradle"}, None
+    if re.search(r"FAILURE: Build failed with an exception", raw):
+        return "build.gradle_failed", "gradle build failed", {"tool": "gradle"}, None
+
+    # Maven
+    m = re.search(r"Failed to execute goal ([\w.\-:]+)", raw)
+    if m:
+        return "build.maven_goal", "failed to execute goal", {"tool": "maven", "goal": m.group(1)}, None
+
+    # Make
+    m = re.search(r"make(?:\[\d+\])?: \*\*\* \[([^\]]+)\] Error (\d+)", raw)
+    if m:
+        return "build.make_failed", f"make target failed (exit {m.group(2)})", {"tool": "make", "target": m.group(1)}, None
+
+    return None
+
+
 DETECTORS = [
     _detect_k8s,
     # Language detectors with distinctive markers run before the Python one:
@@ -454,6 +633,12 @@ DETECTORS = [
     _detect_go,
     _detect_java,
     _detect_rust,
+    # Tool-specific detectors run before language ones: a psycopg2 auth
+    # failure is more usefully "db.pg_auth_failed" than "python.operational_error".
+    _detect_git,
+    _detect_database,
+    _detect_systemd,
+    _detect_build,
     _detect_ruby,
     _detect_php,
     _detect_node,
