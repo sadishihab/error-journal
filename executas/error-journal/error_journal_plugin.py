@@ -481,6 +481,85 @@ def cache_diagnosis(fp: str, payload: dict, invoke_id=None) -> None:
         pass    # best effort; a cache miss next time is not a failure
 
 
+# ---------------------------------------------------------------------------
+# Placeholder substitution
+#
+# KB fix_steps/verify_command carry generic placeholders like <pod> or
+# <port>. The detectors already extracted the real values into
+# Fingerprint.identity; this fills them in so the user gets a runnable
+# command instead of a template.
+#
+# identity values originate in user-pasted text and land in strings people
+# copy straight into a shell, so a value is only ever used if it matches
+# SAFE_VALUE_RE. Anything else (spaces, semicolons, backticks, $, quotes,
+# newlines) leaves the placeholder untouched rather than risk injecting it
+# into a command. <password> is never substituted under any circumstance —
+# it is an instruction to the user, not a value we should ever have or print.
+# ---------------------------------------------------------------------------
+
+SAFE_VALUE_RE = re.compile(r"^[A-Za-z0-9._:/@-]{1,100}$")
+
+_PLACEHOLDER_TOKEN_RE = re.compile(r"<([a-zA-Z_]+)>")
+
+# placeholder name -> identity keys to try, in order. First KEY PRESENT in
+# identity wins (its value is then subject to SAFE_VALUE_RE, independent of
+# whether an earlier candidate key was even declared here).
+PLACEHOLDER_IDENTITY_KEYS = {
+    "pod": ("pod",),
+    "unit": ("unit",),
+    "host": ("host",),
+    "port": ("port",),
+    "image": ("image",),
+    "module": ("module",),
+    "package": ("module", "library"),
+    "lib": ("library", "module"),
+    "user": ("user",),
+    "repo": ("repo",),
+    "svc": ("workload",),
+    "name": ("unit", "module", "workload", "database"),
+    "relation": ("relation",),
+    "database": ("database",),
+    "goal": ("goal",),
+    "target": ("target",),
+}
+
+
+def _resolve_placeholder(name: str, identity: dict):
+    """The safe substitution value for one placeholder name, or None."""
+    if name == "password":
+        return None
+    for key in PLACEHOLDER_IDENTITY_KEYS.get(name, ()):
+        value = identity.get(key)
+        if value is None:
+            continue
+        value = str(value)
+        return value if SAFE_VALUE_RE.match(value) else None
+    return None
+
+
+def _substitute(text, identity: dict):
+    if not text:
+        return text
+
+    def repl(m: "re.Match") -> str:
+        value = _resolve_placeholder(m.group(1), identity)
+        return value if value is not None else m.group(0)
+
+    return _PLACEHOLDER_TOKEN_RE.sub(repl, text)
+
+
+def fill_placeholders(body: dict, identity: dict) -> dict:
+    """Copy of `body` with fix_steps/verify_command placeholders filled in.
+
+    Never mutates `body` in place — KB entries are module-level dicts shared
+    across every invocation.
+    """
+    out = dict(body)
+    out["fix_steps"] = [_substitute(step, identity) for step in body.get("fix_steps", [])]
+    out["verify_command"] = _substitute(body.get("verify_command"), identity)
+    return out
+
+
 def diagnose(log: str, context: str = "", invoke_id=None) -> dict:
     fp = fingerprint(log)
     curated = KB.get(fp.category)
@@ -498,6 +577,8 @@ def diagnose(log: str, context: str = "", invoke_id=None) -> dict:
                 cache_diagnosis(fp.fingerprint, body, invoke_id)
             except SamplingUnavailable:
                 body, source = UNKNOWN, "none"
+
+    body = fill_placeholders(body, fp.identity)
 
     out = {
         "fingerprint": fp.fingerprint,
