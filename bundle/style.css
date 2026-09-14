@@ -427,6 +427,40 @@ html, body {
 }
 .empty strong { display: block; color: var(--ink); font-size: 13px; margin-bottom: 5px; }
 
+/* ------------------------------------------------------ repeat offenders */
+/* Reuses .log-list/.chip/.empty wholesale. .log-hits.is-repeat already
+   existed for this purpose but was never wired up until this view. */
+
+.offender-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 1.5px solid var(--rule);
+  background: var(--paper);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  transition: border-color .12s, transform .08s;
+}
+.offender-row:hover { border-color: var(--ink); transform: translateX(2px); }
+
+.offender-head { display: flex; align-items: center; gap: 8px; }
+.offender-cat { flex: 1 1 auto; font-size: 12px; font-weight: 600; word-break: break-all; }
+
+.offender-fix {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-mid);
+  padding-left: 8px;
+  border-left: 2px solid var(--verified);
+}
+
+.chip.status-open      { border-color: var(--stamp);    color: var(--stamp); }
+.chip.status-resolved  { border-color: var(--verified); color: var(--verified); }
+
 /* -------------------------------------------------------------- a11y */
 
 :focus-visible { outline: 2px solid var(--stamp); outline-offset: 2px; }

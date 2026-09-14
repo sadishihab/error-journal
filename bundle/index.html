@@ -19,6 +19,9 @@
         <button class="tab" role="tab" data-tab="log" aria-selected="false">
           Logbook <span class="tab-count" id="logCount"></span>
         </button>
+        <button class="tab" role="tab" data-tab="offenders" aria-selected="false">
+          Recurring <span class="tab-count" id="offenderCount"></span>
+        </button>
       </nav>
     </header>
 
@@ -54,6 +57,11 @@
     <!-- ------------------------------------------------------------- log -->
     <section class="panel" id="panel-log" role="tabpanel">
       <div id="logList" class="log-list"></div>
+    </section>
+
+    <!-- ------------------------------------------------------- offenders -->
+    <section class="panel" id="panel-offenders" role="tabpanel">
+      <div id="offenderList" class="log-list"></div>
     </section>
 
   </div>

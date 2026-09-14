@@ -66,6 +66,10 @@ Then:
    replace them with your own advice.
 3. `verify_command` — if present, give it as the way to confirm the fix.
 4. `fingerprint` — include it, so the user can refer back to the incident.
+5. `follow_up` — if present, print it **verbatim** as the final sentence.
+   If it is null, add nothing — do not invent your own "let me know if this
+   works." The tool has already decided whether asking is worth it; that is
+   not a judgment call for you to make or override.
 
 Keep it tight. The user is mid-incident and scanning.
 
@@ -87,8 +91,20 @@ then move on. The diagnosis still stands.
 
 ## Afterwards
 
-If the user reports back that a fix worked, call `record_resolution` with
-the fingerprint so it surfaces next time. Do not ask for this routinely —
-only when they volunteer it.
+If the user later says a fix worked — whether or not you printed a
+`follow_up` line, and whether it's in this reply or several messages
+later — call `record_resolution` with:
+
+- `fingerprint` — from the `diagnose_error` call for that incident.
+- `worked: true`.
+- `fix` — a short description of what they actually did, **inferred from
+  the conversation**. Do not make them restate it formally; if they said
+  "bumped the memory limit and it's fine now," the fix is "raised the
+  memory limit," not a request for a cleaner sentence.
+
+If they say it *didn't* work, call `record_resolution` with `worked: false`
+and whatever `fix` they tried. This matters as much as the success case —
+a failed attempt is a real answer, and it keeps the journal from claiming a
+fix that doesn't actually work.
 
 If they ask what errors they have hit before, call `list_incidents`.

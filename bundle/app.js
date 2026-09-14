@@ -17,6 +17,8 @@ const els = {
   result: $("result"),
   logList: $("logList"),
   logCount: $("logCount"),
+  offenderList: $("offenderList"),
+  offenderCount: $("offenderCount"),
 };
 
 let anna = null;
@@ -186,6 +188,41 @@ function renderLog(items) {
     .join("");
 }
 
+function renderOffenders(items) {
+  els.offenderCount.textContent = items.length ? String(items.length) : "";
+
+  if (!items.length) {
+    els.offenderList.innerHTML =
+      '<div class="empty"><strong>Nothing recurring yet</strong>' +
+      "Hit the same error three times and it lands here \u2014 ranked by what's " +
+      "still unresolved, not just by count.</div>";
+    return;
+  }
+
+  els.offenderList.innerHTML = items
+    .map((it) => {
+      const statusChip = it.has_working_fix
+        ? '<span class="chip status-resolved">Resolved</span>'
+        : '<span class="chip status-open">Unresolved</span>';
+      const fixLine =
+        it.has_working_fix && it.known_working_fix
+          ? `<div class="offender-fix">Fixed by: ${esc(it.known_working_fix)}</div>`
+          : "";
+      return (
+        `<button class="offender-row" data-fp="${esc(it.fingerprint)}">` +
+        '<div class="offender-head">' +
+        `<span class="offender-cat">${esc(it.category)}</span>` +
+        `<span class="log-hits is-repeat">${esc(it.occurrence_count)}\u00D7</span>` +
+        statusChip +
+        `<span class="log-when">${esc(ago(it.last_seen))}</span>` +
+        "</div>" +
+        fixLine +
+        "</button>"
+      );
+    })
+    .join("");
+}
+
 /* -------------------------------------------------------------- actions */
 
 async function diagnose() {
@@ -210,6 +247,7 @@ async function diagnose() {
     setStatus("");
     await anna.window.set_title?.(`Error Journal \u2014 ${data.category}`).catch(() => {});
     refreshLog();
+    refreshOffenders();
   } catch (err) {
     setStatus(`Could not diagnose that: ${err.message}`, true);
   } finally {
@@ -224,6 +262,15 @@ async function refreshLog() {
     renderLog(data?.incidents || []);
   } catch {
     renderLog([]);
+  }
+}
+
+async function refreshOffenders() {
+  try {
+    const data = await callTool("list_repeat_offenders", { limit: 50 });
+    renderOffenders(data?.offenders || []);
+  } catch {
+    renderOffenders([]);
   }
 }
 
@@ -273,6 +320,7 @@ document.addEventListener("click", (e) => {
   if (tab) {
     switchTab(tab.dataset.tab);
     if (tab.dataset.tab === "log") refreshLog();
+    if (tab.dataset.tab === "offenders") refreshOffenders();
     return;
   }
 
@@ -285,7 +333,7 @@ document.addEventListener("click", (e) => {
     return;
   }
 
-  const row = e.target.closest(".log-row");
+  const row = e.target.closest(".log-row") || e.target.closest(".offender-row");
   if (row) openIncident(row.dataset.fp);
 });
 
@@ -328,6 +376,7 @@ els.input.addEventListener("input", () => {
     });
 
     refreshLog();
+    refreshOffenders();
   } catch (err) {
     setStatus(`Could not connect to Anna: ${err.message}`, true);
   }

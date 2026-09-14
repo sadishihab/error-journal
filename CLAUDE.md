@@ -60,6 +60,13 @@ The version string (`0.3.3` as of writing) must stay in sync in three places whe
   - The `headline` string (e.g. "This is the 3rd time you have hit this... What fixed it last
     time: ...") is assembled server-side in `journal()`, not left for the model to compose from
     separate fields — that assembly step is deliberately non-optional.
+  - **Placeholder substitution**: KB `fix_steps` and `verify_command` contain `<pod>`, `<port>`,
+    `<module>` etc. These are filled from `identity` at response time (never by editing the KB,
+    which is module-level shared state — copy before modifying). Substitution is gated on
+    `^[A-Za-z0-9._:/@-]{1,100}$` because these values originate in user-pasted text and end up in
+    commands people copy into a shell. A value that fails the check leaves the placeholder intact
+    rather than falling through to another key — a wrong command is worse than a template.
+    `<password>` is never substituted.
   - `MANIFEST["tools"][*]["parameters"]` is a **list** of parameter defs, not a JSON Schema object
     — a JSON Schema object here makes the platform see zero parameters and the model refuses to
     call the tool.
@@ -96,6 +103,9 @@ python test_fingerprint.py
 # covers granted/ungranted storage and sampling-fallback/caching behavior
 python test_plugin.py
 
+# Placeholder substitution + shell-injection guard tests
+python test_substitution.py
+
 # Wide detector-coverage smoke test against a large sample corpus (reports
 # unmatched samples, not pass/fail)
 python stress_fingerprint.py
@@ -108,14 +118,15 @@ anna-app executa dev --dir . --invoke diagnose_error \
   --args '{"log": "ModuleNotFoundError: No module named '\''requests'\''"}' --json
 
 # Full local harness: Anna App UI + this Executa, in-process
-anna-app dev            # from repo root; opens http://127.0.0.1:5180/dev/<wid>?t=<dev-token>
+anna-app dev                  # from repo root; storage is IN-MEMORY and discarded
+anna-app dev --storage aps    # hits real production APS — use this to test the journal
 
 # Schema + ACL checks on manifest.json + bundle/
 anna-app validate
 anna-app validate --strict   # also greps host_api ACL coverage
 ```
 
-There is no single "run all tests" command — run the three Python scripts above individually; none
+There is no single "run all tests" command — run the four Python scripts above individually; none
 use pytest or exit non-zero on failure by convention (`test_fingerprint.py` and
 `stress_fingerprint.py` print PASS/FAIL/MISS summaries and must be read, not just executed).
 
@@ -142,3 +153,117 @@ Adding a platform requires updating **both** the workflow matrix and
 - Never let a storage or sampling failure raise out of `diagnose()`/`invoke()` — always catch
   `StorageUnavailable`/`SamplingUnavailable` and degrade (see existing try/except patterns in
   `error_journal_plugin.py`).
+
+---
+
+## Commit conventions
+
+**You commit autonomously.** Do not ask for permission before committing. When a unit of work is
+complete and the gates below pass, commit it, push it, and report what you did.
+
+### Hard gates — never commit if any of these fail
+
+1. **The full test suite passes.** Run every suite, not just the one you touched:
+   ```bash
+   cd executas/error-journal
+   python3 test_fingerprint.py && python3 stress_fingerprint.py \
+     && python3 test_substitution.py && python3 test_plugin.py
+   ```
+   These print PASS/FAIL rather than exiting non-zero, so **read the output** — any `FAIL` or a
+   non-zero `unmatched` count means stop and report, do not commit.
+
+2. **`anna-app validate --strict` passes** if you touched `manifest.json`, `app.json`, or anything
+   under `bundle/`.
+
+3. **The diff contains only what you intended.** Run `git status --short` and `git diff --stat`
+   before staging. If a file you did not mean to touch appears, stop and report it.
+
+4. **No secrets, binaries, or build artifacts.** Never stage anything under `dist/`, `build/`,
+   `.anna/`, `__pycache__/`, `*.egg-info/`, or any file containing a token or key.
+
+### What goes in a commit
+
+- **One logical change.** Never mix a refactor with a behaviour change, or formatting with a feature.
+- **Behaviour changes land with their test, in the same commit.** A fix without a test that would
+  have caught it is not finished.
+- **Mechanical changes get their own commit**, clearly labelled (e.g. `chore: ruff --fix`).
+- **Config and tooling changes are separate** from product changes.
+
+### Commit messages
+
+Subject under 72 characters with a conventional prefix (`feat:`, `fix:`, `chore:`, `docs:`,
+`test:`, `build:`). Then a body explaining **why**, not what — the diff shows what. What was wrong
+before, why this approach over the alternatives, and anything a future reader would otherwise have
+to rediscover. If you made a judgement call, say what you decided and why.
+
+### After committing
+
+Push, then report in this exact form:
+
+```
+committed <sha> <subject>
+  <file>  +N -M
+  <file>  +N -M
+tests: <suites run, result>
+pushed to origin/main
+```
+
+### Stop and ask instead of proceeding
+
+Commit freely, but surface it when:
+
+- A test fails, or you had to change a test to make it pass.
+- The change touches anything user-facing: listing copy, error messages the end user reads, the
+  privacy policy, `SKILL.md`, `system_prompt_addendum`.
+- You are about to delete or rename a file, or move code between files.
+- You would need `--force`, or to amend or rebase anything already pushed.
+- The task turned out to require a design decision that was not specified.
+
+### Never, under any circumstances
+
+- Force push, rewrite pushed history, or delete branches or tags.
+- Use `git add -A` or `git add .` — stage only your own files by explicit path. The working tree
+  often contains unrelated uncommitted work.
+- Version-bump anything without being asked. Versions must change in three files together
+  (`executa.json`, `pyproject.toml`, `MANIFEST`), and getting it wrong wastes a publish cycle.
+- Bump `FINGERPRINT_VERSION` casually — it invalidates every stored incident. Only when
+  normalisation or category naming actually changes, and say so explicitly.
+
+---
+
+## Verification conventions
+
+Design checks that could actually fail. A green run proves nothing unless the same check would go
+red if the thing were broken.
+
+- **Every new guard needs a positive control.** A suite where nothing is ever substituted, cached,
+  or rejected will pass every negative test.
+- **Remove the dependency and re-run.** Move the gitignored file aside, use `--no-cache-dir`, unset
+  the env var, try a fresh clone.
+- **Read what "passed" means.** A test can print success while asserting nothing.
+- **After a scripted edit, check the diffstat.** Zero lines means the file was untracked; hundreds
+  means a rewrite reformatted everything.
+- **After any file move, grep for stale references** in READMEs, docs, docstrings, and CI config.
+- **When a tool reports success but nothing changed, believe the state, not the report.**
+
+---
+
+## Project-specific traps
+
+Learned the hard way; re-learning them costs a day each.
+
+- **Python changes need a harness restart.** `anna-app dev` hot-reloads only files under `bundle/`.
+  Editing the plugin and refreshing the browser shows you the old code.
+- **Plain `anna-app dev` discards storage writes.** Use `--storage aps` to test the journal.
+- **`executa.json` requires `tool_id` and `type`.** Missing either produces a warning buried in the
+  startup output, then every `tools.invoke` fails with `not_implemented` — which points nowhere
+  near the cause.
+- **`bundled_executas` in `app.json` is an object keyed by handle**, not an array. An array yields
+  `bundled handle "0"`.
+- **Editing an Executa in the Anna Hub resets its visibility to private**, which then fails
+  `apps submit-review` with a message that names the wrong field.
+- **The KB is module-level shared state.** Copy entries before modifying them.
+- **Fingerprints are computed from exact text.** Changing normalisation or category names
+  invalidates stored history.
+- **`host_capabilities` goes at the top level of `manifest.json`** *and* in the Executa's describe
+  manifest. The docs used to say `storage.tool`; that string is dead.
