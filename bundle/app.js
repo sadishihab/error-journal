@@ -15,6 +15,7 @@ const els = {
   btn: $("diagnoseBtn"),
   status: $("status"),
   result: $("result"),
+  firstRun: $("firstRun"),
   logList: $("logList"),
   logCount: $("logCount"),
   offenderList: $("offenderList"),
@@ -71,6 +72,8 @@ function setStatus(msg, isError = false) {
 /* ------------------------------------------------------------ rendering */
 
 function renderResult(d) {
+  els.firstRun?.classList.add("is-retired");
+
   const h = d.history;
   const seen = h?.seen_before;
   const parts = [];
@@ -168,6 +171,7 @@ function renderResult(d) {
 
 function renderLog(items) {
   els.logCount.textContent = items.length ? String(items.length) : "";
+  if (items.length) els.firstRun?.classList.add("is-retired");
 
   if (!items.length) {
     els.logList.innerHTML =

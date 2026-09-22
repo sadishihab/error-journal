@@ -211,6 +211,27 @@ html, body {
 .status { margin-top: 12px; font-size: 12px; color: var(--muted); min-height: 18px; }
 .status.is-error { color: var(--stamp); }
 
+/* First-run hint: the one thing a placeholder can't show is what happens the
+   *second* time. Borrows the .recall band and a static .stamp — no new
+   vocabulary — and retires itself once the logbook has an entry. */
+.first-run {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  background: #FDF6F4;
+  border-left: 3px solid var(--stamp);
+}
+.first-run.is-retired { display: none; }
+.first-run p { margin: 0; font-size: 12px; line-height: 1.6; color: var(--ink-mid); }
+.first-run strong { color: var(--ink); }
+
+/* Same stamp, minus the slam — it's an illustration, not an event. */
+.stamp-demo { display: block; animation: none; opacity: .6; }
+
+@media (max-width: 460px) { .stamp-demo { display: none; } }
+
 /* --------------------------------------------------------------- result */
 
 .result:empty { display: none; }
