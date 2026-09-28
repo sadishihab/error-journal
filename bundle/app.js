@@ -142,6 +142,10 @@ function renderResult(d) {
     );
   }
 
+  if (d.journal_available === true && d.fingerprint) {
+    parts.push(renderResolveControl(d.fingerprint));
+  }
+
   if (d.source === "generated") {
     parts.push(
       '<div class="generated-note">This one is not in the playbook, so the diagnosis ' +
@@ -167,6 +171,20 @@ function renderResult(d) {
   parts.push("</article>");
 
   els.result.innerHTML = parts.join("");
+}
+
+function renderResolveControl(fp) {
+  return (
+    `<div class="section resolve" data-resolve data-fp="${esc(fp)}">` +
+    `<div class="section-label">Did this fix it?</div>` +
+    '<div class="resolve-row">' +
+    `<input type="text" class="resolve-input" placeholder="What fixed it, or what you tried" maxlength="140" />` +
+    '<button class="resolve-btn resolve-yes" data-worked="true">It worked</button>' +
+    '<button class="resolve-btn resolve-no" data-worked="false">It didn\'t</button>' +
+    "</div>" +
+    '<div class="resolve-status" aria-live="polite"></div>' +
+    "</div>"
+  );
 }
 
 function renderLog(items) {
@@ -278,6 +296,43 @@ async function refreshOffenders() {
   }
 }
 
+async function recordResolution(section, worked) {
+  const fp = section.dataset.fp;
+  const input = section.querySelector(".resolve-input");
+  const statusEl = section.querySelector(".resolve-status");
+  const buttons = section.querySelectorAll(".resolve-btn");
+  const fix = input.value.trim();
+
+  if (worked && !fix) {
+    statusEl.classList.add("is-error");
+    statusEl.textContent = "Say what fixed it, so it can show next time.";
+    input.focus();
+    return;
+  }
+
+  buttons.forEach((b) => (b.disabled = true));
+  input.disabled = true;
+  statusEl.classList.remove("is-error");
+  statusEl.textContent = "Saving…";
+
+  try {
+    await callTool("record_resolution", { fingerprint: fp, worked, fix });
+    statusEl.classList.remove("is-error");
+    statusEl.textContent = worked
+      ? "Saved — logged as fixed."
+      : "Saved — logged as still broken.";
+    input.value = "";
+    refreshLog();
+    refreshOffenders();
+  } catch (err) {
+    statusEl.classList.add("is-error");
+    statusEl.textContent = `Could not save: ${err.message}`;
+  } finally {
+    buttons.forEach((b) => (b.disabled = false));
+    input.disabled = false;
+  }
+}
+
 async function openIncident(fp) {
   try {
     const data = await callTool("recall_incident", { fingerprint: fp });
@@ -334,6 +389,13 @@ document.addEventListener("click", (e) => {
       copy.textContent = "Copied";
       setTimeout(() => (copy.textContent = "Copy"), 1400);
     });
+    return;
+  }
+
+  const resolveBtn = e.target.closest(".resolve-btn");
+  if (resolveBtn) {
+    const section = resolveBtn.closest("[data-resolve]");
+    if (section) recordResolution(section, resolveBtn.dataset.worked === "true");
     return;
   }
 
