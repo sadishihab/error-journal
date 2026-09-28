@@ -119,6 +119,10 @@ function renderResult(d) {
     );
   }
 
+  if (d.resolutions?.length) {
+    parts.push(renderResolutionHistory(d.resolutions));
+  }
+
   if (d.root_cause) {
     parts.push(
       `<div class="section"><div class="section-label">Root cause</div>` +
@@ -184,6 +188,30 @@ function renderResolveControl(fp) {
     "</div>" +
     '<div class="resolve-status" aria-live="polite"></div>' +
     "</div>"
+  );
+}
+
+function renderResolutionHistory(resolutions) {
+  const rows = [...resolutions]
+    .slice(-5)
+    .reverse()
+    .map((r) => {
+      const chip = r.worked
+        ? '<span class="chip status-resolved">Worked</span>'
+        : '<span class="chip status-open">Didn\'t work</span>';
+      const fixText = r.fix ? esc(r.fix) : "No note";
+      return (
+        '<div class="resolution-row">' +
+        chip +
+        `<span class="prose">${fixText}</span>` +
+        `<span class="log-when">${esc(ago(r.at))}</span>` +
+        "</div>"
+      );
+    })
+    .join("");
+  return (
+    `<div class="section"><div class="section-label">What you tried</div>` +
+    `<div class="log-list">${rows}</div></div>`
   );
 }
 

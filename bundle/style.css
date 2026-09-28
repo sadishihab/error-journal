@@ -528,6 +528,8 @@ html, body {
 .resolve-status { margin-top: 7px; font-size: 11px; color: var(--muted); min-height: 14px; }
 .resolve-status.is-error { color: var(--stamp); }
 
+.resolution-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
 /* -------------------------------------------------------------- a11y */
 
 :focus-visible { outline: 2px solid var(--stamp); outline-offset: 2px; }
