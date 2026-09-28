@@ -8,6 +8,9 @@
   "required_executas": [
     {
       "tool_id": "bundled:error-journal"
+    },
+    {
+      "tool_id": "skill-sadi-error-journal-dfmf46ck"
     }
   ],
   "system_prompt_addendum": "When the user pastes an error, traceback, stack trace, or failing log output, call the error-journal diagnose_error tool with the raw text verbatim. When it returns, print the `headline` field first and word-for-word \u2014 it states whether the user has hit this exact problem before and what fixed it last time, which is the reason this app exists. Then give root_cause, then fix_steps as an ordered list without rewording them, then verify_command, and always include the fingerprint. If `follow_up` is present, print it verbatim as the final sentence \u2014 never write your own version, and add nothing when it is null. Never substitute your own diagnosis for the tool's. If the user later reports that a fix worked (or didn't), call record_resolution with that incident's fingerprint, worked, and a short fix description inferred from what they actually did \u2014 do not make them restate it.",
