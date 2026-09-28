@@ -541,4 +541,5 @@ html, body {
   .intake-actions { flex-direction: column; }
   .context-input { padding: 8px 10px; }
   .resolve-row { flex-direction: column; }
+  .resolve-input { flex: 0 0 auto; min-height: 34px; }
 }
