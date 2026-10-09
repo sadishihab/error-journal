@@ -133,6 +133,40 @@ def check_categories():
     print()
 
 
+# kubectl event line wrapped so the container name sits on the next line.
+K8S_WRAPPED = (
+    "Warning BackOff pod/payments-api-7d9f8b6c5-x2k9q Back-off restarting failed container\n"
+    "payments-api-7d9f8b6c5-x2k9q 0/1 CrashLoopBackOff 5 (30s ago) 4m"
+)
+K8S_SAME_LINE = (
+    'Warning BackOff pod/foo-6d9f8b6c5-abcde Back-off restarting failed container "web" '
+    "in pod, CrashLoopBackOff"
+)
+# Computed on the code BEFORE the container-regex fix, so history stored under
+# it keeps matching.
+K8S_WRAPPED_FINGERPRINT = "sha256:957fb4b957a45ab60f43fc3848a44eeb"
+
+
+def check_k8s_container():
+    print("=" * 70)
+    print("K8S CONTAINER IDENTITY (name must not leak across a newline)")
+    print("=" * 70)
+    fp = fingerprint(K8S_WRAPPED)
+    assert fp.category == "k8s.crashloop", fp.category
+    assert fp.identity.get("workload") == "payments-api", fp.identity
+    assert "container" not in fp.identity, f"leaked next line: {fp.identity}"
+    print(f"[PASS] wrapped paste: workload={fp.identity['workload']}, no container key")
+
+    fp = fingerprint(K8S_SAME_LINE)
+    assert fp.identity.get("container") == "web", fp.identity
+    print(f"[PASS] same-line container still captured: {fp.identity['container']}")
+
+    fp = fingerprint(K8S_WRAPPED)
+    assert fp.fingerprint == K8S_WRAPPED_FINGERPRINT, fp.fingerprint
+    print(f"[PASS] wrapped paste fingerprint unchanged: {fp.fingerprint}")
+    print()
+
+
 def run():
     failures = []
 
@@ -164,6 +198,7 @@ def run():
         print()
 
     check_categories()
+    check_k8s_container()
 
     print("=" * 70)
     if failures:

@@ -163,7 +163,7 @@ def _detect_k8s(raw: str) -> Optional[tuple[str, str, dict]]:
             identity["pod"] = pod.group(1)
             identity["workload"] = workload_of(pod.group(1))
 
-        container = re.search(r'container\s+"?([\w.\-]+)"?', raw, re.I)
+        container = re.search(r'container[ \t]+"?([\w.\-]+)"?', raw, re.I)
         if container:
             identity["container"] = container.group(1)
 
