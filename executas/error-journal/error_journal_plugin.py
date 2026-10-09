@@ -41,7 +41,8 @@ STORAGE_TIMEOUT_S = 5.0
 # Sampling is a model round-trip, so it needs a far longer budget than a KV
 # read. Still bounded: a hung completion must not hold the invoke forever.
 SAMPLING_TIMEOUT_S = 60.0
-SAMPLING_MAX_TOKENS = 700
+# thinking models spend tokens on reasoning before the JSON; stay under the 4096 per-call grant
+SAMPLING_MAX_TOKENS = 3000
 MAX_LOG_CHARS = 4000        # keep prompts small; the tail carries the error
 
 MANIFEST = {
@@ -500,6 +501,29 @@ SAMPLING_SYSTEM = (
 )
 
 
+def _describe_reply(res) -> str:
+    """Shape of a host sampling reply, for diagnostics. Never includes the
+    completion text or anything derived from the user's log: only key names,
+    type names, and short host-supplied metadata."""
+    if not isinstance(res, dict):
+        return f"reply_type={type(res).__name__}"
+    content = res.get("content")
+    ctype = type(content).__name__
+    if isinstance(content, dict):
+        ctype += f"{sorted(str(k) for k in content)[:6]}"
+    usage = res.get("usage")
+    if isinstance(usage, dict):
+        usage = {str(k): v for k, v in usage.items()
+                 if isinstance(v, (int, float)) and not isinstance(v, bool)}
+    else:
+        usage = type(usage).__name__ if usage is not None else None
+    return (
+        f"keys={sorted(str(k) for k in res)[:10]}, content_type={ctype}, "
+        f"stopReason={str(res.get('stopReason'))[:30]}, "
+        f"model={str(res.get('model'))[:40]}, usage={usage}"
+    )
+
+
 def sample_diagnosis(fp_obj, raw_log: str, invoke_id=None) -> dict:
     """Ask the host model for a diagnosis. Raises SamplingUnavailable."""
     tail = raw_log.strip()[-MAX_LOG_CHARS:]
@@ -546,7 +570,7 @@ def sample_diagnosis(fp_obj, raw_log: str, invoke_id=None) -> dict:
 
     text = ((res.get("content") or {}).get("text") or "").strip()
     if not text:
-        raise SamplingUnavailable("empty completion")
+        raise SamplingUnavailable(f"empty completion ({_describe_reply(res)})")
 
     # structuredValid is informational only — always parse defensively.
     if text.startswith("```"):
