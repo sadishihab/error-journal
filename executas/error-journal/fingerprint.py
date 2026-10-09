@@ -17,6 +17,7 @@ Pure stdlib. No Anna dependencies. Testable in isolation.
 
 from __future__ import annotations
 
+import builtins
 import hashlib
 import re
 from dataclasses import dataclass, field, asdict
@@ -177,6 +178,15 @@ def _detect_k8s(raw: str) -> Optional[tuple[str, str, dict]]:
     return None
 
 
+# names with curated KB entries that tracebacks print dotted but log excerpts print bare
+PYTHON_NONBUILTIN_KNOWN = frozenset({"JSONDecodeError", "HTTPError", "SSLError"})
+
+
+def _is_builtin_exception(name: str) -> bool:
+    obj = getattr(builtins, name, None)
+    return isinstance(obj, type) and issubclass(obj, BaseException)
+
+
 def _detect_python(raw: str) -> Optional[tuple]:
     has_tb = "Traceback (most recent call last)" in raw
     # Allow a leading log prefix — journald stamps, pytest gutters, compose
@@ -186,12 +196,22 @@ def _detect_python(raw: str) -> Optional[tuple]:
         raw,
         re.M,
     )
-    if not exc_lines and not has_tb:
-        return None
     if not exc_lines:
         return None
 
     exc_type, exc_msg = exc_lines[-1]
+
+    # Anything ending in "Error"/"Exception" is not necessarily Python: a
+    # Terraform paste quoting a DynamoDB ConditionalCheckFailedException
+    # looks the same. Demand some Python-specific evidence.
+    last = exc_type.split(".")[-1]
+    if not (
+        has_tb
+        or "." in exc_type
+        or _is_builtin_exception(last)
+        or last in PYTHON_NONBUILTIN_KNOWN
+    ):
+        return None
 
     identity = {"exception": exc_type}
     cat = "python." + _snake(exc_type.split(".")[-1])

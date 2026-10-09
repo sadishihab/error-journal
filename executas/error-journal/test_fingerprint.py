@@ -92,6 +92,47 @@ DIFFERENT = [
 ]
 
 
+# Terraform S3/DynamoDB backend lock failure. The final line ends in
+# "...Exception:", which the Python detector used to claim.
+TERRAFORM_LOCK = """\u2577
+\u2502 Error: Error acquiring the state lock
+\u2502
+\u2502 Error message: operation error DynamoDB: PutItem, https response error
+\u2502 StatusCode: 400, RequestID: 7F3K9Q2L0X8M, ConditionalCheckFailedException: The
+\u2502 conditional request failed
+\u2502 Lock Info:
+\u2502   ID:        3a1b2c4d-5e6f-7081-92a3-b4c5d6e7f809
+\u2502   Path:      my-bucket/env/prod/terraform.tfstate
+\u2575"""
+
+# (label, raw, expected category)
+CATEGORY_CASES = [
+    ("terraform state lock is not python", TERRAFORM_LOCK, "unknown"),
+    ("bare HTTPError stays python", "HTTPError: 404 Not Found", "python.http_error"),
+    ("bare JSONDecodeError stays python",
+     "JSONDecodeError: Expecting value: line 1 column 1 (char 0)", "python.json_decode_error"),
+    ("bare SSLError stays python", "SSLError: certificate verify failed", "python.ssl_error"),
+    ("bare unknown *Error is not python", "MyAppError: boom", "unknown"),
+    ("same line under a Traceback is python",
+     "Traceback (most recent call last):\nMyAppError: boom", "python.my_app_error"),
+    ("dotted non-builtin stays python",
+     "botocore.errorfactory.ConditionalCheckFailedException: The conditional request failed",
+     "python.conditional_check_failed_exception"),
+    ("bare builtin stays python", "ValueError: invalid literal", "python.value_error"),
+]
+
+
+def check_categories():
+    print("=" * 70)
+    print("PYTHON DETECTOR EVIDENCE RULE (category must match exactly)")
+    print("=" * 70)
+    for label, raw, want in CATEGORY_CASES:
+        got = fingerprint(raw).category
+        assert got == want, f"{label}: got {got!r}, wanted {want!r}"
+        print(f"[PASS] {label}: {got}")
+    print()
+
+
 def run():
     failures = []
 
@@ -121,6 +162,8 @@ def run():
         if not ok:
             failures.append(label)
         print()
+
+    check_categories()
 
     print("=" * 70)
     if failures:
