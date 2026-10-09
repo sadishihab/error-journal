@@ -3,7 +3,8 @@
   "permissions": [
     "tools.invoke",
     "storage.read",
-    "storage.write"
+    "storage.write",
+    "llm.complete"
   ],
   "required_executas": [
     {
@@ -59,6 +60,9 @@
       "window": [
         "set_title",
         "ready"
+      ],
+      "llm": [
+        "complete"
       ]
     },
     "csp_overrides": {},
