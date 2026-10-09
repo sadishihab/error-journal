@@ -64,6 +64,35 @@ function ago(iso) {
   return days === 1 ? "yesterday" : `${days}d ago`;
 }
 
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+// Mirrors _human_date() in the plugin: '2026-08-12T09:14:00+00:00' -> '12 August'.
+function humanDate(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "an earlier date";
+  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
+}
+
+// Mirrors the headline sentences built in journal() in the plugin, so a
+// Logbook open says the same thing as a fresh diagnosis. Returns PLAIN text:
+// renderResult() escapes it once with esc(); escaping here too would double it.
+function recallHeadline(inc) {
+  const n = Number(inc.occurrence_count) || 1;
+  if (n < 2) return "First time you have hit this \u2014 it is now in your journal.";
+  const ordinal = { 2: "2nd", 3: "3rd" }[n] || `${n}th`;
+  const contexts = Array.isArray(inc.contexts) ? inc.contexts : [];
+  const where = contexts.length ? ` in ${contexts.join(", ")}` : "";
+  let headline =
+    `This is the ${ordinal} time you have hit this${where} \u2014 ` +
+    `first seen ${humanDate(inc.first_seen)}.`;
+  const fix = (inc.resolutions || []).filter((r) => r.worked).slice(-1)[0]?.fix;
+  if (fix) headline += ` What fixed it last time: ${fix}`;
+  return headline;
+}
+
 function setStatus(msg, isError = false) {
   els.status.textContent = msg || "";
   els.status.classList.toggle("is-error", !!isError);
@@ -377,6 +406,7 @@ async function openIncident(fp) {
       journal_available: true,
       history: {
         seen_before: true,
+        headline: recallHeadline(inc),
         occurrence_count: inc.occurrence_count,
         first_seen: inc.first_seen,
         contexts: inc.contexts,
