@@ -243,8 +243,65 @@ def run_no_sampling():
     print()
 
 
+def run_content_shapes():
+    """sample_diagnosis() must degrade, never raise AttributeError, whatever
+    shape the host puts in `content`. The MockAgent hard-codes its reply, so
+    this stubs reverse_rpc on the plugin module directly."""
+    print("=" * 72)
+    print("SAMPLING CONTENT SHAPES — only a diagnosis or SamplingUnavailable")
+    print("=" * 72)
+    import error_journal_plugin as plug
+    from fingerprint import fingerprint
+
+    good = json.dumps({
+        "root_cause": "The lock file is out of sync.",
+        "fix_steps": ["npm install"],
+        "verify_command": "npm ls",
+        "severity": "low",
+        "confidence": 0.5,
+    })
+    half = len(good) // 2
+    # (name, reply, expect_diagnosis)
+    cases = [
+        ("dict with text",       {"content": {"type": "text", "text": good}}, True),
+        ("list of text parts",   {"content": [{"type": "text", "text": good[:half]},
+                                              {"type": "text", "text": good[half:]}]}, True),
+        ("list, mixed parts",    {"content": [{"type": "image"}, "junk",
+                                              {"type": "text", "text": good}]}, True),
+        ("list with no text",    {"content": [{"type": "image"}, {"type": "x"}]}, False),
+        ("empty list",           {"content": []}, False),
+        ("string content",       {"content": "hello"}, False),
+        ("None content",         {"content": None}, False),
+        ("missing content",      {"model": "m"}, False),
+        ("non-string text",      {"content": {"type": "text", "text": 5}}, False),
+        ("reply is a string",    "oops", False),
+        ("reply is None",        None, False),
+        ("completion is a list", {"content": {"type": "text", "text": "[1, 2]"}}, False),
+    ]
+    fp = fingerprint("FooFrameworkError: widget registry desynchronised")
+    real = plug.reverse_rpc
+    try:
+        for name, reply, expect_diag in cases:
+            plug.reverse_rpc = lambda *a, _r=reply, **k: _r
+            try:
+                out = plug.sample_diagnosis(fp, "FooFrameworkError: x", "inv-x")
+            except plug.SamplingUnavailable as e:
+                assert not expect_diag, f"{name}: expected a diagnosis, got {e}"
+                if "empty completion" in str(e):
+                    assert len(str(e)) < 300, f"{name}: message too long"
+                print(f"[PASS] {name:22s} -> SamplingUnavailable: {str(e)[:70]}")
+            else:
+                assert expect_diag, f"{name}: expected SamplingUnavailable, got {out}"
+                assert out["fix_steps"] == ["npm install"], f"{name}: {out}"
+                print(f"[PASS] {name:22s} -> diagnosis")
+    finally:
+        plug.reverse_rpc = real
+    print()
+
+
 if __name__ == "__main__":
     run_granted()
     run_sampling()
     run_no_sampling()
     run_ungranted()
+    run_content_shapes()

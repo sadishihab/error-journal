@@ -524,6 +524,22 @@ def _describe_reply(res) -> str:
     )
 
 
+def _completion_text(res) -> str:
+    """Pull the completion text out of a host sampling reply. A dict content
+    block yields its text; a list yields the text of each dict part that has
+    one; anything else is treated as empty rather than raised on."""
+    content = res.get("content") if isinstance(res, dict) else None
+    if isinstance(content, dict):
+        parts = [content]
+    elif isinstance(content, list):
+        parts = [p for p in content if isinstance(p, dict)]
+    else:
+        return ""
+    return "".join(
+        p["text"] for p in parts if isinstance(p.get("text"), str)
+    ).strip()
+
+
 def sample_diagnosis(fp_obj, raw_log: str, invoke_id=None) -> dict:
     """Ask the host model for a diagnosis. Raises SamplingUnavailable."""
     tail = raw_log.strip()[-MAX_LOG_CHARS:]
@@ -568,7 +584,7 @@ def sample_diagnosis(fp_obj, raw_log: str, invoke_id=None) -> dict:
     except StorageUnavailable as e:
         raise SamplingUnavailable(str(e)) from e
 
-    text = ((res.get("content") or {}).get("text") or "").strip()
+    text = _completion_text(res)
     if not text:
         raise SamplingUnavailable(f"empty completion ({_describe_reply(res)})")
 
@@ -579,6 +595,8 @@ def sample_diagnosis(fp_obj, raw_log: str, invoke_id=None) -> dict:
         data = json.loads(text)
     except json.JSONDecodeError as e:
         raise SamplingUnavailable(f"unparseable completion: {e}") from e
+    if not isinstance(data, dict):
+        raise SamplingUnavailable(f"completion is {type(data).__name__}, not an object")
 
     steps = [str(x) for x in (data.get("fix_steps") or []) if str(x).strip()][:5]
     if not data.get("root_cause") or not steps:
