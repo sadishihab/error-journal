@@ -699,6 +699,7 @@ def _should_ask_follow_up(source: str, seen_before: bool, known_working_fix) -> 
 def diagnose(log: str, context: str = "", invoke_id=None) -> dict:
     fp = fingerprint(log)
     curated = KB.get(fp.category)
+    sampling_error = None
 
     if curated:
         body, source = curated, "curated"
@@ -711,8 +712,12 @@ def diagnose(log: str, context: str = "", invoke_id=None) -> dict:
                 body = sample_diagnosis(fp, log, invoke_id)
                 source = "generated"
                 cache_diagnosis(fp.fingerprint, body, invoke_id)
-            except SamplingUnavailable:
+            except SamplingUnavailable as e:
                 body, source = UNKNOWN, "none"
+                sampling_error = str(e)[:300]
+                # stderr only: stdout is the JSON-RPC channel.
+                print(f"[error-journal] sampling failed: {sampling_error}",
+                      file=sys.stderr, flush=True)
 
     body = fill_placeholders(body, fp.identity)
 
@@ -729,6 +734,7 @@ def diagnose(log: str, context: str = "", invoke_id=None) -> dict:
         "confidence": body["confidence"],
         "source": source,                       # curated | generated | none
         "recognized": source != "none",
+        "sampling_error": sampling_error,       # None unless sampling failed
         "history": None,
         "journal_available": True,
     }

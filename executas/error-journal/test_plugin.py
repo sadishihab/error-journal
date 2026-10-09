@@ -143,6 +143,8 @@ def run_granted():
     d1 = a.invoke(2, "diagnose_error", {"log": CRASHLOOP, "context": "prod-cluster"})["result"]["data"]
     h1 = d1["history"]
     print(f"1st crashloop -> seen_before={h1['seen_before']} count={h1['occurrence_count']}")
+    assert d1["source"] == "curated" and d1["sampling_error"] is None, \
+        f"curated path: sampling_error={d1.get('sampling_error')!r}"
 
     d2 = a.invoke(3, "diagnose_error", {"log": CRASHLOOP_LATER, "context": "prod-cluster"})["result"]["data"]
     h2 = d2["history"]
@@ -206,11 +208,17 @@ def run_sampling():
     d2 = a.invoke(2, "diagnose_error", {"log": UNCOVERED})["result"]["data"]
     print(f"2nd  -> source={d2['source']} sampling_calls={a.sampling_calls} "
           f"(want still 1 — served from cache)")
+    assert d1["source"] == "generated" and d1["sampling_error"] is None, \
+        f"generated path: sampling_error={d1.get('sampling_error')!r}"
+    assert d2["source"] == "generated" and d2["sampling_error"] is None, \
+        f"cached path: sampling_error={d2.get('sampling_error')!r}"
     print(f"   identical answer: {d1['root_cause'] == d2['root_cause']}")
 
     d3 = a.invoke(3, "diagnose_error", {"log": "ModuleNotFoundError: No module named 'x'"})["result"]["data"]
     print(f"curated -> source={d3['source']} conf={d3['confidence']} "
           f"sampling_calls={a.sampling_calls} (want still 1 — KB hit, no model)")
+    assert d3["source"] == "curated" and d3["sampling_error"] is None, \
+        f"curated path: sampling_error={d3.get('sampling_error')!r}"
     a.close()
     print()
 
@@ -227,6 +235,10 @@ def run_no_sampling():
     print(f"fix_steps   = {len(d['fix_steps'])} (want 0)")
     print(f"confidence  = {d['confidence']} (want 0.0)")
     print(f"journalled  = {d['journal_available']}")
+    print(f"sampling_error = {d['sampling_error']!r}")
+    assert d["source"] == "none", f"expected source 'none', got {d['source']!r}"
+    assert isinstance(d["sampling_error"], str) and d["sampling_error"], \
+        f"sampling_error must be a non-empty string, got {d.get('sampling_error')!r}"
     a.close()
     print()
 
