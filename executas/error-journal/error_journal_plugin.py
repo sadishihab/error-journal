@@ -47,7 +47,7 @@ MAX_LOG_CHARS = 4000        # keep prompts small; the tail carries the error
 
 MANIFEST = {
     "name": "error-journal",
-    "version": "0.4.0",
+    "version": "0.4.1",
     "description": (
         "Diagnose a pasted error, traceback, or failing log. Returns a stable "
         "fingerprint, root cause, ordered fix steps, and whether the user has "
