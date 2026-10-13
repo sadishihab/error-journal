@@ -497,6 +497,9 @@ SAMPLING_SYSTEM = (
     "Be concrete and specific to the error given. Prefer the command people "
     "actually forget over the obvious one. Never invent a fix you are not "
     "reasonably confident in \u2014 lower the confidence score instead. "
+    "Order fix steps from least to most destructive: inspect before changing "
+    "anything, and prefer graceful options (for example SIGTERM) over force "
+    "(SIGKILL, rm -rf, --force). Say plainly in the step when it is destructive. "
     "Reply with a JSON object matching the requested schema."
 )
 

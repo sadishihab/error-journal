@@ -299,9 +299,24 @@ def run_content_shapes():
     print()
 
 
+def run_sampling_prompt():
+    """Presence check only: proves the instruction is in the prompt, not that
+    the model follows it."""
+    print("=" * 72)
+    print("SAMPLING PROMPT — safer-ordering instruction present")
+    print("=" * 72)
+    import error_journal_plugin as plug
+
+    assert "least to most destructive" in plug.SAMPLING_SYSTEM
+    assert "Reply with a JSON object" in plug.SAMPLING_SYSTEM
+    print("[PASS] SAMPLING_SYSTEM carries the ordering instruction and the JSON sentence")
+    print()
+
+
 if __name__ == "__main__":
     run_granted()
     run_sampling()
     run_no_sampling()
     run_ungranted()
     run_content_shapes()
+    run_sampling_prompt()
