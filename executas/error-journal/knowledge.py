@@ -529,6 +529,21 @@ KB = {
         "confidence": 0.8,
     },
     # --------------------------------------- high-frequency: javascript ---
+    "node.eaddrinuse": {
+        "severity": "low",
+        "root_cause": (
+            "Another process is already listening on that port. It is often an "
+            "older copy of your own app that did not shut down."
+        ),
+        "fix_steps": [
+            "lsof -i :<port>            # find who is holding it (Windows: netstat -ano | findstr :<port>)",
+            "If it is your own old dev server, stop it normally first with kill <PID>. Use kill -9 only if it ignores that.",
+            "Or run this app on a different port, through your PORT variable or config.",
+            "In a container or on a shared host, check that another service is not publishing the same port (docker ps --filter publish=<port>).",
+        ],
+        "verify_command": "lsof -i :<port>",
+        "confidence": 0.9,
+    },
     "node.type_error": {
         "severity": "medium",
         "root_cause": (

@@ -122,6 +122,52 @@ CATEGORY_CASES = [
 ]
 
 
+EADDR_A = (
+    "Error: listen EADDRINUSE: address already in use :::3000\n"
+    "    at Server.setupListenHandle [as _listen2] (node:net:1740:16)\n"
+    "    at listenInCluster (node:net:1788:12)\n"
+)
+EADDR_B = "Error: listen EADDRINUSE: address already in use 127.0.0.1:8080"
+EADDR_C = (
+    "[2026-10-13T10:00:01.123Z] web | "
+    "listen EADDRINUSE: address already in use 0.0.0.0:5000"
+)
+NODE_TYPE_ERROR = (
+    "TypeError: Cannot read properties of undefined (reading 'id')\n"
+    "    at handler (/app/src/routes.js:14:9)\n"
+    "    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)\n"
+)
+
+
+def check_eaddrinuse():
+    for label, raw, port in (
+        ("EADDRINUSE :::3000 with stack", EADDR_A, "3000"),
+        ("EADDRINUSE 127.0.0.1:8080", EADDR_B, "8080"),
+        ("EADDRINUSE 0.0.0.0:5000 with log prefix", EADDR_C, "5000"),
+        ("EADDRINUSE ::1:4000", "listen EADDRINUSE: address already in use ::1:4000", "4000"),
+    ):
+        fp = fingerprint(raw)
+        assert fp.category == "node.eaddrinuse", (label, fp.category)
+        assert fp.identity.get("port") == port, (label, fp.identity)
+        assert fp.identity.get("language") == "javascript", (label, fp.identity)
+        print(f"[PASS] {label}")
+
+    assert fingerprint(EADDR_A).fingerprint != fingerprint(
+        EADDR_A.replace("3000", "3001")
+    ).fingerprint, "ports 3000 and 3001 must differ"
+    assert fingerprint(EADDR_A).fingerprint == fingerprint(EADDR_A).fingerprint
+    print("[PASS] EADDRINUSE: different ports differ, same input is stable")
+
+    # no parseable port: still the category, scope None
+    fp = fingerprint("Error: listen EADDRINUSE: address already in use")
+    assert fp.category == "node.eaddrinuse" and "port" not in fp.identity, fp
+    print("[PASS] EADDRINUSE without a port keeps the category")
+
+    fp = fingerprint(NODE_TYPE_ERROR)
+    assert fp.category == "node.type_error", fp.category
+    print("[PASS] ordinary Node TypeError is still node.type_error")
+
+
 def check_categories():
     print("=" * 70)
     print("PYTHON DETECTOR EVIDENCE RULE (category must match exactly)")
@@ -199,6 +245,7 @@ def run():
 
     check_categories()
     check_k8s_container()
+    check_eaddrinuse()
 
     print("=" * 70)
     if failures:

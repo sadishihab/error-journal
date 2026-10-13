@@ -297,6 +297,19 @@ def _detect_node(raw: str) -> Optional[tuple]:
     if m:
         return "node.module_not_found", m.group(0), {"module": m.group(1)}, None
 
+    # EADDRINUSE is matched before the JS-frame check: a one-line paste has no
+    # stack frame. The signal deliberately omits the port; the port is the
+    # scope, so 3000 and 3001 stay distinct (same convention as docker.port_conflict).
+    m = re.search(r"EADDRINUSE[^\n]*?address already in use\s*(\S*)", raw)
+    if m:
+        port = re.search(r":(\d+)$", m.group(1))
+        identity = {"language": "javascript"}
+        scope = None
+        if port:
+            identity["port"] = port.group(1)
+            scope = port.group(1)
+        return "node.eaddrinuse", "listen EADDRINUSE: address already in use", identity, scope
+
     # JS stack frames look like "at fn (/path/file.js:14:9)" or "at file.js:1:1".
     # Python uses 'File "x", line N' instead, so this cleanly separates the two
     # languages even though both have TypeError / RangeError / SyntaxError.

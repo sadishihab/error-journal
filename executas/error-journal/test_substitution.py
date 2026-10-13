@@ -181,6 +181,23 @@ def test_mapping_only_references_real_identity_keys_or_is_documented_dead():
             )
 
 
+def test_node_eaddrinuse_fills_port():
+    raw = (
+        "Error: listen EADDRINUSE: address already in use :::3000\n"
+        "    at Server.setupListenHandle [as _listen2] (node:net:1740:16)\n"
+        "    at listenInCluster (node:net:1788:12)\n"
+    )
+    fp = fingerprint(raw)
+    assert fp.category == "node.eaddrinuse", fp.category
+    body = fill_placeholders(KB[fp.category], fp.identity)
+    steps = "\n".join(body["fix_steps"])
+    check("eaddrinuse: steps carry the real port", "3000" in steps)
+    check("eaddrinuse: no <port> left in steps", "<port>" not in steps)
+    check("eaddrinuse: verify_command filled", body["verify_command"] == "lsof -i :3000")
+    check("eaddrinuse: <PID> left as a literal placeholder", "kill <PID>" in steps)
+    check("eaddrinuse: KB entry not mutated", "<port>" in KB[fp.category]["fix_steps"][0])
+
+
 def run():
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for t in tests:

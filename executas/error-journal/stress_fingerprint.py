@@ -102,6 +102,10 @@ Error: config missing
 
 Node.js v22.11.0"""),
 
+    ("node: EADDRINUSE port in use", """Error: listen EADDRINUSE: address already in use :::3000
+    at Server.setupListenHandle [as _listen2] (node:net:1740:16)
+    at listenInCluster (node:net:1788:12)"""),
+
     # --------------------------------------------------- NOT SUPPORTED ---
     ("go: panic", """panic: runtime error: invalid memory address or nil pointer dereference
 [signal SIGSEGV: segmentation violation code=0x1 addr=0x0 pc=0x4a1b2c]
