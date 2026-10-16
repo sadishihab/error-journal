@@ -76,17 +76,22 @@ function humanDate(iso) {
   return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
 }
 
+// Mirrors _ordinal() in the plugin: 1st, 2nd, 3rd, 4th, 11th, 12th, 13th, 21st, 112th.
+function ordinal(n) {
+  if ([11, 12, 13].includes(n % 100)) return `${n}th`;
+  return `${n}${{ 1: "st", 2: "nd", 3: "rd" }[n % 10] || "th"}`;
+}
+
 // Mirrors the headline sentences built in journal() in the plugin, so a
 // Logbook open says the same thing as a fresh diagnosis. Returns PLAIN text:
 // renderResult() escapes it once with esc(); escaping here too would double it.
 function recallHeadline(inc) {
   const n = Number(inc.occurrence_count) || 1;
   if (n < 2) return "First time you have hit this \u2014 it is now in your journal.";
-  const ordinal = { 2: "2nd", 3: "3rd" }[n] || `${n}th`;
   const contexts = Array.isArray(inc.contexts) ? inc.contexts : [];
   const where = contexts.length ? ` in ${contexts.join(", ")}` : "";
   let headline =
-    `This is the ${ordinal} time you have hit this${where} \u2014 ` +
+    `This is the ${ordinal(n)} time you have hit this${where} \u2014 ` +
     `first seen ${humanDate(inc.first_seen)}.`;
   const fix = (inc.resolutions || []).filter((r) => r.worked).slice(-1)[0]?.fix;
   if (fix) headline += ` What fixed it last time: ${fix}`;

@@ -292,6 +292,13 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def _ordinal(n: int) -> str:
+    """1 -> '1st', 22 -> '22nd', 112 -> '112th'. Mirrored by ordinal() in bundle/app.js."""
+    if n % 100 in (11, 12, 13):
+        return f"{n}th"
+    return f"{n}{({1: 'st', 2: 'nd', 3: 'rd'}).get(n % 10, 'th')}"
+
+
 def _human_date(iso: str) -> str:
     """'2026-08-12T09:14:00+00:00' -> '12 August'."""
     try:
@@ -387,7 +394,7 @@ def journal(fp_obj, context: str, invoke_id=None) -> dict:
     # from four separate fields. Assembly is the step that gets skipped, and
     # this line IS the product — it must not be optional.
     if seen_before:
-        ordinal = {2: "2nd", 3: "3rd"}.get(n, f"{n}th")
+        ordinal = _ordinal(n)
         where = f" in {', '.join(record['contexts'])}" if record.get("contexts") else ""
         headline = (
             f"This is the {ordinal} time you have hit this{where} — "

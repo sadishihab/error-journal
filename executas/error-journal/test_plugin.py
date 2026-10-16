@@ -313,7 +313,37 @@ def run_sampling_prompt():
     print()
 
 
+def run_ordinals():
+    print("=" * 72)
+    print("ORDINAL SUFFIX — server headline above 20")
+    print("=" * 72)
+    import error_journal_plugin as plug
+
+    want = {1: "1st", 2: "2nd", 3: "3rd", 4: "4th", 11: "11th", 12: "12th", 13: "13th",
+            21: "21st", 22: "22nd", 23: "23rd", 101: "101st", 111: "111th", 112: "112th",
+            121: "121st"}
+    for n, exp in want.items():
+        assert plug._ordinal(n) == exp, f"_ordinal({n}) = {plug._ordinal(n)!r}, want {exp!r}"
+    print(f"[PASS] _ordinal correct for {sorted(want)}")
+
+    a = MockAgent(storage_granted=True)
+    a.request({"jsonrpc": "2.0", "id": 0, "method": "initialize",
+               "params": {"protocolVersion": "2.0"}})
+    seen = {}
+    for n in range(1, 24):
+        d = a.invoke(100 + n, "diagnose_error", {"log": CRASHLOOP})["result"]["data"]
+        assert d["history"]["occurrence_count"] == n, d["history"]
+        seen[n] = d["headline"]
+    a.close()
+    for n, exp in {2: "2nd", 3: "3rd", 4: "4th", 11: "11th", 12: "12th", 13: "13th",
+                   21: "21st", 22: "22nd", 23: "23rd"}.items():
+        assert f"This is the {exp} time you have hit this" in seen[n], f"n={n}: {seen[n]!r}"
+    print("[PASS] headline for occurrence 2, 3, 4, 11, 12, 13, 21, 22, 23 carries the right suffix")
+    print()
+
+
 if __name__ == "__main__":
+    run_ordinals()
     run_granted()
     run_sampling()
     run_no_sampling()
