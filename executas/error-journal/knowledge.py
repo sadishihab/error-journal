@@ -649,17 +649,6 @@ KB = {
         "verify_command": "ls -la <path>",
         "confidence": 0.85,
     },
-    "python.json_decode_error": {
-        "severity": "low",
-        "root_cause": "The text being parsed was not valid JSON.",
-        "fix_steps": [
-            "Print the first 200 characters of the raw body \u2014 it is usually an HTML error page",
-            "'Expecting value: line 1 column 1' means the body was empty or not JSON at all",
-            "Check response.status_code before parsing",
-        ],
-        "verify_command": None,
-        "confidence": 0.85,
-    },
     "python.runtime_error": {
         "severity": "medium",
         "root_cause": "A generic runtime failure. The message carries the real detail.",
