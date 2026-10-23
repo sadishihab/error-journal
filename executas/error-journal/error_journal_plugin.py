@@ -507,6 +507,10 @@ SAMPLING_SYSTEM = (
     "Order fix steps from least to most destructive: inspect before changing "
     "anything, and prefer graceful options (for example SIGTERM) over force "
     "(SIGKILL, rm -rf, --force). Say plainly in the step when it is destructive. "
+    "Never put a real secret value inline in a command: use a placeholder, an "
+    "environment variable that is already set, or a secrets manager. Verify "
+    "commands must not print secret values; prefer identity or status checks "
+    "such as aws sts get-caller-identity. "
     "Reply with a JSON object matching the requested schema."
 )
 
@@ -813,7 +817,10 @@ def diagnose(log: str, context: str = "", invoke_id=None) -> dict:
         "Present `headline` first, verbatim, then root_cause, then fix_steps "
         "in order without rewording them, then verify_command, then the "
         "fingerprint. If `follow_up` is present, print it verbatim as the "
-        "final sentence; add nothing when it is null."
+        "final sentence; add nothing when it is null. Put every command, and "
+        "every placeholder such as `<PID>` or `<pod>`, inside backticks or a "
+        "code block, because the chat renderer hides angle brackets that are "
+        "not in code."
     )
     return out
 

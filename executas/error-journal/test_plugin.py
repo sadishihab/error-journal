@@ -310,6 +310,96 @@ def run_sampling_prompt():
     assert "least to most destructive" in plug.SAMPLING_SYSTEM
     assert "Reply with a JSON object" in plug.SAMPLING_SYSTEM
     print("[PASS] SAMPLING_SYSTEM carries the ordering instruction and the JSON sentence")
+
+    sys_prompt = plug.SAMPLING_SYSTEM
+    assert "Never put a real secret value inline" in sys_prompt
+    assert "aws sts get-caller-identity" in sys_prompt
+    # Order matters: ordering rule, then the secrets rule, then the JSON sentence.
+    i_order = sys_prompt.index("least to most destructive")
+    i_secret = sys_prompt.index("Never put a real secret value inline")
+    i_json = sys_prompt.index("Reply with a JSON object")
+    assert i_order < i_secret < i_json, (i_order, i_secret, i_json)
+    print("[PASS] SAMPLING_SYSTEM carries the secrets rules, between ordering and JSON sentences")
+
+    # The constant is only useful if it is what actually goes to the host.
+    from fingerprint import fingerprint
+    sent = []
+    real = plug.reverse_rpc
+
+    def capture(method, params, *a, **kw):
+        sent.append((method, params))
+        return {"content": {"type": "text", "text": json.dumps({
+            "root_cause": "x", "fix_steps": ["inspect"], "verify_command": "",
+            "severity": "low", "confidence": 0.5})}}
+
+    plug.reverse_rpc = capture
+    try:
+        plug.sample_diagnosis(fingerprint("FooFrameworkError: nothing known"), "FooFrameworkError: nothing known")
+    finally:
+        plug.reverse_rpc = real
+    assert len(sent) == 1 and sent[0][0] == "sampling/createMessage", sent
+    payload_prompt = sent[0][1].get("systemPrompt", "")
+    assert payload_prompt == plug.SAMPLING_SYSTEM
+    assert "Never put a real secret value inline" in payload_prompt
+    assert "aws sts get-caller-identity" in payload_prompt
+    print("[PASS] the captured sampling payload systemPrompt carries the secrets rules")
+
+    # Positive control: the checks above go red on the prompt as it was before.
+    old_prompt = plug.SAMPLING_SYSTEM.replace(
+        plug.SAMPLING_SYSTEM[i_secret:i_json], "")
+    assert "Never put a real secret value inline" not in old_prompt
+    assert "aws sts get-caller-identity" not in old_prompt
+    print("[PASS] control: the old prompt lacks the secrets rules, so the checks can fail")
+    print()
+
+
+OLD_DISPLAY_NOTE = (
+    "Present `headline` first, verbatim, then root_cause, then fix_steps "
+    "in order without rewording them, then verify_command, then the "
+    "fingerprint. If `follow_up` is present, print it verbatim as the "
+    "final sentence; add nothing when it is null."
+)
+
+
+def check_display_note(note):
+    """Raise AssertionError unless the note keeps its old instructions and
+    asks for backticks around commands and placeholders such as <PID>."""
+    assert "Present `headline` first" in note, "lost the headline instruction"
+    assert "`follow_up`" in note, "lost the follow_up instruction"
+    assert "backticks" in note and "code block" in note, "no backtick instruction"
+    assert "<PID>" in note, "does not name the <PID> placeholder"
+
+
+def run_display_note():
+    print("=" * 72)
+    print("DISPLAY NOTE — chat is told to keep <PID> style placeholders in code")
+    print("=" * 72)
+    # Positive control: the old note must fail the check.
+    try:
+        check_display_note(OLD_DISPLAY_NOTE)
+        raise SystemExit("[FAIL] control: old display_note passed the check")
+    except AssertionError:
+        print("[PASS] control: the old display_note fails the check")
+
+    a = MockAgent(storage_granted=True, sampling_granted=True)
+    a.request({"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {}})
+    cur = a.invoke(1, "diagnose_error", {
+        "log": "Error: listen EADDRINUSE: address already in use :::3002"})["result"]["data"]
+    gen = a.invoke(2, "diagnose_error", {
+        "log": "FooFrameworkError: widget registry desynchronised at boot"})["result"]["data"]
+    a.close()
+    b = MockAgent(storage_granted=True, sampling_granted=False)
+    b.request({"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {}})
+    none = b.invoke(1, "diagnose_error", {"log": "FooFrameworkError: totally unknown thing"})["result"]["data"]
+    b.close()
+
+    assert cur["source"] == "curated" and gen["source"] == "generated" and none["source"] == "none"
+    for name, d in (("curated", cur), ("generated", gen), ("none", none)):
+        check_display_note(d["display_note"])
+        print(f"[PASS] {name:9s} result display_note asks for backticks and names <PID>")
+    # The KB templates are untouched: the literal placeholder is still in the steps.
+    assert any("<PID>" in step for step in cur["fix_steps"]), cur["fix_steps"]
+    print("[PASS] curated fix_steps still contain the literal <PID> placeholder")
     print()
 
 
@@ -350,3 +440,4 @@ if __name__ == "__main__":
     run_ungranted()
     run_content_shapes()
     run_sampling_prompt()
+    run_display_note()
