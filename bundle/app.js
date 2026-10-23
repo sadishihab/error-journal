@@ -329,7 +329,7 @@ async function diagnose() {
     });
     renderResult(data);
     setStatus("");
-    await anna.window.set_title?.(`Error Journal \u2014 ${data.category}`).catch(() => {});
+    await anna.window.set_title?.({ title: `Error Journal \u2014 ${data.category}` }).catch(() => {});
     refreshLog();
     refreshOffenders();
   } catch (err) {
