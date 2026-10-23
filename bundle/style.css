@@ -18,11 +18,35 @@
   --code-fg:    #E8EDF0;
   --spinner-track: rgba(251,250,248,.35);
 
+  color-scheme: light;
+
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Mono",
           Menlo, Consolas, monospace;
   --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 
   --step: 4px;
+}
+
+/* Dark theme: warm paper becomes deep ink. Every colour token above has a
+   value here; test_theme_css_js.py fails if one is missing. */
+[data-theme="dark"] {
+  --paper:      #171D23;
+  --rule:       #33424E;
+  --rule-soft:  #1F272E;
+  --ink:        #E7ECEF;
+  --ink-mid:    #B6C2CB;
+  --muted:      #93A0AB;
+  --stamp:      #EE7468;
+  --verified:   #41B8AA;
+  --amber:      #DDA450;
+  --band-stamp: #2A1D1E;
+  --band-amber: #27221A;
+  --placeholder: #7F8C97;
+  --code-bg:    #0D1116;
+  --code-fg:    #E8EDF0;
+  --spinner-track: rgba(23,29,35,.35);
+
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }

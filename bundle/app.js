@@ -24,6 +24,17 @@ const els = {
 
 let anna = null;
 
+/* ---------------------------------------------------------------- theme */
+
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme === "dark" ? "dark" : "light";
+}
+
+// First paint, and the answer for hosts that never send a theme.
+if (typeof window.matchMedia === "function") {
+  applyTheme(window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+}
+
 /* ------------------------------------------------------------ transport */
 
 /** Unwrap the several envelope shapes a tool result can arrive in. */
@@ -485,6 +496,13 @@ els.input.addEventListener("input", () => {
 (async function boot() {
   try {
     anna = await AnnaAppRuntime.connect();
+
+    if (anna.theme === "light" || anna.theme === "dark") applyTheme(anna.theme);
+    if (typeof anna.onThemeChange === "function") {
+      anna.onThemeChange(({ theme }) => {
+        if (theme === "light" || theme === "dark") applyTheme(theme);
+      });
+    }
 
     const draft = anna.runtimeState?.draft;
     if (draft) els.input.value = draft;
