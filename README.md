@@ -97,6 +97,12 @@ Building on a brand-new platform also surfaced real platform bugs: a storage-sco
 
 - **[anna-app-template](https://github.com/sadishihab/anna-app-template)** — the reusable scaffold extracted from this project, so the next Anna app doesn't repeat the same discovery.
 
+## Privacy
+
+Error Journal keeps a short summary of each error you paste in your own Anna storage: its type, a cleaned-up error line, details such as the port or module name, how often and when you saw it, and any notes you type. The journal does not keep the full paste, but the window remembers what is in the paste box as a draft until you clear it. For errors it doesn't already know, the last part of what you paste is sent to Anna's AI to write a diagnosis. Remove passwords, keys and tokens before pasting, because a secret inside the error line can still end up in the summary.
+
+See [PRIVACY.md](PRIVACY.md) for the full policy.
+
 ## License
 
 MIT
